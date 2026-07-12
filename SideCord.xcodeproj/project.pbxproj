@@ -1,0 +1,584 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0FC436ACC3A837B338FA6286 /* SettingsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8587992FD453E4995B8DE5CD /* SettingsModels.swift */; };
+		112F301D2E45F17C2A8E8574 /* ShortcutRecorderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B6135006C4426CE790E2CD4 /* ShortcutRecorderView.swift */; };
+		225671F3D6E40B74C1E9E800 /* SidebarRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D068EEE7F44553E1B5C5BA /* SidebarRootView.swift */; };
+		24D3FEBD29916F1D106B87A1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DFFB4809E2F1E8AF528FD5C2 /* Assets.xcassets */; };
+		3F1DE7570A86636A971B6C3A /* EdgeMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6244273205DA2723780050A4 /* EdgeMonitor.swift */; };
+		4471AA5321A1E3C124B17277 /* WebURLPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B486942BB37F2D72F19CD8D5 /* WebURLPolicyTests.swift */; };
+		534ED47D8B8B6FC3FF25FF40 /* DiscordWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61039269BE7CFBF597DB7A35 /* DiscordWebView.swift */; };
+		56DE53D54B210D0ADF7D19C7 /* PanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D79657C76635E040A90277DA /* PanelController.swift */; };
+		66C63CCBDFBD8E2AF79E26B3 /* LaunchAtLoginController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A9C3AB9E48E1E1536B99CF /* LaunchAtLoginController.swift */; };
+		6C127AA385617451436DFC26 /* WebConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 579F9593110E18A8E4C12690 /* WebConfigurationTests.swift */; };
+		76FA45A253551A08347D46EB /* WebCSSComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0111BB6AD26D6EDB52EF5465 /* WebCSSComposerTests.swift */; };
+		77B00938AB744BB5E63E4ADE /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FE259502BF0C9EBBD9F3E91 /* AppSettings.swift */; };
+		811CAC6F1DF5D8FE3B9DEFB0 /* PanelGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D34938805EE59748F86C5B /* PanelGeometryTests.swift */; };
+		881617C887983661B58B51AD /* SidebarPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C6D194785BA9551B4C6D6C /* SidebarPanel.swift */; };
+		A302B687384450399B8AC814 /* GlobalShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59EED98C45C8FB65BE0B22E2 /* GlobalShortcutManager.swift */; };
+		A5486856E3807EC9B2921E48 /* AuthenticationPopupController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1E88D3D33255F6FA26FE7E /* AuthenticationPopupController.swift */; };
+		A69860E5EA6EB3A0F62FEE89 /* PanelGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1759C139FB780AFC8BC372C /* PanelGeometry.swift */; };
+		A7BB5FBAFCFA7016AD3D901C /* DiscordURLPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB49E566A2032D3024B1902F /* DiscordURLPolicy.swift */; };
+		AA28AA2E716540477B3E3F30 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27FF86498E82143930D2E5C /* OnboardingView.swift */; };
+		AEE5DE321B445143583FE2C8 /* DiscordCSSComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B02959E6BF45625FC40C506 /* DiscordCSSComposer.swift */; };
+		B0C96E2ACDC63D240946B520 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C5FDD9325DB07FE6C52689 /* AppDelegate.swift */; };
+		C771692B6FED98F043724D14 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE13AD42D6D002D891E3525D /* main.swift */; };
+		DB8D147611F3285B0A1D1156 /* CoreAppSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC412FB4CE970C45F77E41B0 /* CoreAppSettingsTests.swift */; };
+		DC1890CE3E0FC925B0A003B8 /* CoreShortcutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9811CB4C4754954FC2B8DF4C /* CoreShortcutTests.swift */; };
+		F1360FB50D67598BA067295C /* layout-mods.css in Resources */ = {isa = PBXBuildFile; fileRef = 54C163D82640C73FE4324A31 /* layout-mods.css */; };
+		F1AD105BA5E4CD6ED04B9556 /* WebCSSRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48B6934723B549D0042B8C82 /* WebCSSRuntimeTests.swift */; };
+		F6B8C97985669E43EDE6274F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1AF244C8E60058FE310DD0B /* SettingsView.swift */; };
+		FE73A845EA3E8987E1E4B7BA /* compact.css in Resources */ = {isa = PBXBuildFile; fileRef = B55EF6EE31976BA0B743079C /* compact.css */; };
+		FF3F991408B6CA7714F22C77 /* DiscordWebController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C165A6257A6E849696AF121E /* DiscordWebController.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		442BE93DA8ECC6EC8D64F1CF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6EB29A9334E6072EDE098FFA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1357572C6C11F7EDC11FBACA;
+			remoteInfo = SideCord;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		00D34938805EE59748F86C5B /* PanelGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelGeometryTests.swift; sourceTree = "<group>"; };
+		0111BB6AD26D6EDB52EF5465 /* WebCSSComposerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebCSSComposerTests.swift; sourceTree = "<group>"; };
+		0FE259502BF0C9EBBD9F3E91 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		17C71E8850A77D86E0257444 /* SideCord.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SideCord.entitlements; sourceTree = "<group>"; };
+		4510E86C4AA17733B38F0DB4 /* SideCord.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SideCord.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		48B6934723B549D0042B8C82 /* WebCSSRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebCSSRuntimeTests.swift; sourceTree = "<group>"; };
+		54C163D82640C73FE4324A31 /* layout-mods.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = "layout-mods.css"; sourceTree = "<group>"; };
+		579F9593110E18A8E4C12690 /* WebConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebConfigurationTests.swift; sourceTree = "<group>"; };
+		59EED98C45C8FB65BE0B22E2 /* GlobalShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalShortcutManager.swift; sourceTree = "<group>"; };
+		5B6135006C4426CE790E2CD4 /* ShortcutRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorderView.swift; sourceTree = "<group>"; };
+		61039269BE7CFBF597DB7A35 /* DiscordWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordWebView.swift; sourceTree = "<group>"; };
+		6244273205DA2723780050A4 /* EdgeMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeMonitor.swift; sourceTree = "<group>"; };
+		7C1E88D3D33255F6FA26FE7E /* AuthenticationPopupController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationPopupController.swift; sourceTree = "<group>"; };
+		8587992FD453E4995B8DE5CD /* SettingsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsModels.swift; sourceTree = "<group>"; };
+		86A9C3AB9E48E1E1536B99CF /* LaunchAtLoginController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginController.swift; sourceTree = "<group>"; };
+		8B02959E6BF45625FC40C506 /* DiscordCSSComposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordCSSComposer.swift; sourceTree = "<group>"; };
+		9811CB4C4754954FC2B8DF4C /* CoreShortcutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreShortcutTests.swift; sourceTree = "<group>"; };
+		A1759C139FB780AFC8BC372C /* PanelGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelGeometry.swift; sourceTree = "<group>"; };
+		AED888FECD3972D41355CA0E /* SideCordTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SideCordTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B27FF86498E82143930D2E5C /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		B486942BB37F2D72F19CD8D5 /* WebURLPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebURLPolicyTests.swift; sourceTree = "<group>"; };
+		B55EF6EE31976BA0B743079C /* compact.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = compact.css; sourceTree = "<group>"; };
+		C0D068EEE7F44553E1B5C5BA /* SidebarRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarRootView.swift; sourceTree = "<group>"; };
+		C165A6257A6E849696AF121E /* DiscordWebController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordWebController.swift; sourceTree = "<group>"; };
+		C3C5FDD9325DB07FE6C52689 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		CC412FB4CE970C45F77E41B0 /* CoreAppSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreAppSettingsTests.swift; sourceTree = "<group>"; };
+		D1AF244C8E60058FE310DD0B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		D79657C76635E040A90277DA /* PanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelController.swift; sourceTree = "<group>"; };
+		DB49E566A2032D3024B1902F /* DiscordURLPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordURLPolicy.swift; sourceTree = "<group>"; };
+		DFFB4809E2F1E8AF528FD5C2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		E3C6D194785BA9551B4C6D6C /* SidebarPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarPanel.swift; sourceTree = "<group>"; };
+		FE13AD42D6D002D891E3525D /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		101D219D9FB82DD212F153D9 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C3C5FDD9325DB07FE6C52689 /* AppDelegate.swift */,
+				FE13AD42D6D002D891E3525D /* main.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		1221F52B6F67E6B19C377F79 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				4510E86C4AA17733B38F0DB4 /* SideCord.app */,
+				AED888FECD3972D41355CA0E /* SideCordTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		5DF98888BD1BC0635308D78B /* SideCord */ = {
+			isa = PBXGroup;
+			children = (
+				DFFB4809E2F1E8AF528FD5C2 /* Assets.xcassets */,
+				17C71E8850A77D86E0257444 /* SideCord.entitlements */,
+				101D219D9FB82DD212F153D9 /* App */,
+				944D984140EAD52778EE9378 /* Core */,
+				9933081A870020381AC6C40A /* Panel */,
+				B73310B1205C2EF87377909C /* Resources */,
+				B8A6D2AFD242B579B48D2ADA /* UI */,
+				8FEAEE85D2110378977808BB /* Web */,
+			);
+			path = SideCord;
+			sourceTree = "<group>";
+		};
+		7C6D7C7A662D461495ABF3DA /* SideCordTests */ = {
+			isa = PBXGroup;
+			children = (
+				CC412FB4CE970C45F77E41B0 /* CoreAppSettingsTests.swift */,
+				9811CB4C4754954FC2B8DF4C /* CoreShortcutTests.swift */,
+				00D34938805EE59748F86C5B /* PanelGeometryTests.swift */,
+				579F9593110E18A8E4C12690 /* WebConfigurationTests.swift */,
+				0111BB6AD26D6EDB52EF5465 /* WebCSSComposerTests.swift */,
+				48B6934723B549D0042B8C82 /* WebCSSRuntimeTests.swift */,
+				B486942BB37F2D72F19CD8D5 /* WebURLPolicyTests.swift */,
+			);
+			path = SideCordTests;
+			sourceTree = "<group>";
+		};
+		8FEAEE85D2110378977808BB /* Web */ = {
+			isa = PBXGroup;
+			children = (
+				7C1E88D3D33255F6FA26FE7E /* AuthenticationPopupController.swift */,
+				8B02959E6BF45625FC40C506 /* DiscordCSSComposer.swift */,
+				DB49E566A2032D3024B1902F /* DiscordURLPolicy.swift */,
+				C165A6257A6E849696AF121E /* DiscordWebController.swift */,
+				61039269BE7CFBF597DB7A35 /* DiscordWebView.swift */,
+			);
+			path = Web;
+			sourceTree = "<group>";
+		};
+		944D984140EAD52778EE9378 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				0FE259502BF0C9EBBD9F3E91 /* AppSettings.swift */,
+				59EED98C45C8FB65BE0B22E2 /* GlobalShortcutManager.swift */,
+				86A9C3AB9E48E1E1536B99CF /* LaunchAtLoginController.swift */,
+				8587992FD453E4995B8DE5CD /* SettingsModels.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		9933081A870020381AC6C40A /* Panel */ = {
+			isa = PBXGroup;
+			children = (
+				6244273205DA2723780050A4 /* EdgeMonitor.swift */,
+				D79657C76635E040A90277DA /* PanelController.swift */,
+				A1759C139FB780AFC8BC372C /* PanelGeometry.swift */,
+				E3C6D194785BA9551B4C6D6C /* SidebarPanel.swift */,
+			);
+			path = Panel;
+			sourceTree = "<group>";
+		};
+		AE1DF5F7E792E5006875218C = {
+			isa = PBXGroup;
+			children = (
+				5DF98888BD1BC0635308D78B /* SideCord */,
+				7C6D7C7A662D461495ABF3DA /* SideCordTests */,
+				1221F52B6F67E6B19C377F79 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B73310B1205C2EF87377909C /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				B55EF6EE31976BA0B743079C /* compact.css */,
+				54C163D82640C73FE4324A31 /* layout-mods.css */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		B8A6D2AFD242B579B48D2ADA /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				B27FF86498E82143930D2E5C /* OnboardingView.swift */,
+				D1AF244C8E60058FE310DD0B /* SettingsView.swift */,
+				5B6135006C4426CE790E2CD4 /* ShortcutRecorderView.swift */,
+				C0D068EEE7F44553E1B5C5BA /* SidebarRootView.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1357572C6C11F7EDC11FBACA /* SideCord */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F9FA4CED413B5F9F81B62413 /* Build configuration list for PBXNativeTarget "SideCord" */;
+			buildPhases = (
+				D896C4513FFFE9E548E8E756 /* Sources */,
+				AD182988DAF1431679ACA581 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SideCord;
+			packageProductDependencies = (
+			);
+			productName = SideCord;
+			productReference = 4510E86C4AA17733B38F0DB4 /* SideCord.app */;
+			productType = "com.apple.product-type.application";
+		};
+		86D0033A3119AAACA931C7FC /* SideCordTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 12E2FC831E229927CB1AF7AC /* Build configuration list for PBXNativeTarget "SideCordTests" */;
+			buildPhases = (
+				4FD9D38E176DFE55D5AE56B9 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4580B9E7F78942B17B488DD4 /* PBXTargetDependency */,
+			);
+			name = SideCordTests;
+			packageProductDependencies = (
+			);
+			productName = SideCordTests;
+			productReference = AED888FECD3972D41355CA0E /* SideCordTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6EB29A9334E6072EDE098FFA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					1357572C6C11F7EDC11FBACA = {
+						ProvisioningStyle = Automatic;
+					};
+					86D0033A3119AAACA931C7FC = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = F591C9AFC3CEF29A39DF789F /* Build configuration list for PBXProject "SideCord" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = AE1DF5F7E792E5006875218C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 1221F52B6F67E6B19C377F79 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1357572C6C11F7EDC11FBACA /* SideCord */,
+				86D0033A3119AAACA931C7FC /* SideCordTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AD182988DAF1431679ACA581 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				24D3FEBD29916F1D106B87A1 /* Assets.xcassets in Resources */,
+				FE73A845EA3E8987E1E4B7BA /* compact.css in Resources */,
+				F1360FB50D67598BA067295C /* layout-mods.css in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4FD9D38E176DFE55D5AE56B9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DB8D147611F3285B0A1D1156 /* CoreAppSettingsTests.swift in Sources */,
+				DC1890CE3E0FC925B0A003B8 /* CoreShortcutTests.swift in Sources */,
+				811CAC6F1DF5D8FE3B9DEFB0 /* PanelGeometryTests.swift in Sources */,
+				76FA45A253551A08347D46EB /* WebCSSComposerTests.swift in Sources */,
+				F1AD105BA5E4CD6ED04B9556 /* WebCSSRuntimeTests.swift in Sources */,
+				6C127AA385617451436DFC26 /* WebConfigurationTests.swift in Sources */,
+				4471AA5321A1E3C124B17277 /* WebURLPolicyTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D896C4513FFFE9E548E8E756 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B0C96E2ACDC63D240946B520 /* AppDelegate.swift in Sources */,
+				77B00938AB744BB5E63E4ADE /* AppSettings.swift in Sources */,
+				A5486856E3807EC9B2921E48 /* AuthenticationPopupController.swift in Sources */,
+				AEE5DE321B445143583FE2C8 /* DiscordCSSComposer.swift in Sources */,
+				A7BB5FBAFCFA7016AD3D901C /* DiscordURLPolicy.swift in Sources */,
+				FF3F991408B6CA7714F22C77 /* DiscordWebController.swift in Sources */,
+				534ED47D8B8B6FC3FF25FF40 /* DiscordWebView.swift in Sources */,
+				3F1DE7570A86636A971B6C3A /* EdgeMonitor.swift in Sources */,
+				A302B687384450399B8AC814 /* GlobalShortcutManager.swift in Sources */,
+				66C63CCBDFBD8E2AF79E26B3 /* LaunchAtLoginController.swift in Sources */,
+				AA28AA2E716540477B3E3F30 /* OnboardingView.swift in Sources */,
+				56DE53D54B210D0ADF7D19C7 /* PanelController.swift in Sources */,
+				A69860E5EA6EB3A0F62FEE89 /* PanelGeometry.swift in Sources */,
+				0FC436ACC3A837B338FA6286 /* SettingsModels.swift in Sources */,
+				F6B8C97985669E43EDE6274F /* SettingsView.swift in Sources */,
+				112F301D2E45F17C2A8E8574 /* ShortcutRecorderView.swift in Sources */,
+				881617C887983661B58B51AD /* SidebarPanel.swift in Sources */,
+				225671F3D6E40B74C1E9E800 /* SidebarRootView.swift in Sources */,
+				C771692B6FED98F043724D14 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		4580B9E7F78942B17B488DD4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1357572C6C11F7EDC11FBACA /* SideCord */;
+			targetProxy = 442BE93DA8ECC6EC8D64F1CF /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1E175BD51FF10F6F22D369FB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = SideCord/SideCord.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.sidecord.app;
+				PRODUCT_MODULE_NAME = SideCord;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		48494574442566564AF8AFF1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = SideCord;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "SideCord uses the camera only when you start or join a Discord video call.";
+				INFOPLIST_KEY_NSHighResolutionCapable = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "SideCord uses the microphone only when you start or join a Discord voice call.";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = SideCord;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		60F65D888D6B90FD55E4466D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.sidecord.tests;
+				PRODUCT_MODULE_NAME = SideCordTests;
+				PRODUCT_NAME = SideCordTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SideCord.app/Contents/MacOS/SideCord";
+			};
+			name = Release;
+		};
+		890A05A9C522E54779B23CBD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = SideCord/SideCord.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.sidecord.app;
+				PRODUCT_MODULE_NAME = SideCord;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		A2A3229E34845A363C7EC3A4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = SideCord;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "SideCord uses the camera only when you start or join a Discord video call.";
+				INFOPLIST_KEY_NSHighResolutionCapable = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "SideCord uses the microphone only when you start or join a Discord voice call.";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = SideCord;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		EB72BD1C1B94BA9A601286BF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.sidecord.tests;
+				PRODUCT_MODULE_NAME = SideCordTests;
+				PRODUCT_NAME = SideCordTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SideCord.app/Contents/MacOS/SideCord";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		12E2FC831E229927CB1AF7AC /* Build configuration list for PBXNativeTarget "SideCordTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EB72BD1C1B94BA9A601286BF /* Debug */,
+				60F65D888D6B90FD55E4466D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F591C9AFC3CEF29A39DF789F /* Build configuration list for PBXProject "SideCord" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				48494574442566564AF8AFF1 /* Debug */,
+				A2A3229E34845A363C7EC3A4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F9FA4CED413B5F9F81B62413 /* Build configuration list for PBXNativeTarget "SideCord" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1E175BD51FF10F6F22D369FB /* Debug */,
+				890A05A9C522E54779B23CBD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 6EB29A9334E6072EDE098FFA /* Project object */;
+}

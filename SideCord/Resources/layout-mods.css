@@ -1,0 +1,106 @@
+/* SideCord layout modifiers. Each rule is scoped to a class managed on <html>.
+   Semantic/data selectors are fallbacks for Discord CSS-module name changes. */
+
+html[data-sidecord-hide-servers] {
+  --custom-guild-list-width: 0px;
+}
+
+html[data-sidecord-hide-servers] :where(
+  [class^="guilds_"],
+  [class*=" guilds_"],
+  nav:has([data-list-id="guildsnav"]),
+  nav[aria-label*="Servers" i]
+) {
+  display: none !important;
+}
+
+html[data-sidecord-hide-channels] {
+  --custom-channel-sidebar-width: 0px;
+}
+
+html[data-sidecord-hide-channels] :where(
+  [class^="sidebarList_"],
+  [class*=" sidebarList_"],
+  [class^="sidebar_"]:has([data-list-id^="channels"]),
+  [class*=" sidebar_"]:has([data-list-id^="channels"]),
+  [class^="sidebar_"]:has([data-list-id^="private-channels"]),
+  [class*=" sidebar_"]:has([data-list-id^="private-channels"]),
+  nav[aria-label*="Channels" i],
+  nav[aria-label*="Direct Messages" i]
+) {
+  display: none !important;
+}
+
+html[data-sidecord-hide-members] {
+  --custom-member-list-width: 0px;
+}
+
+html[data-sidecord-hide-members] :where(
+  [class^="membersWrap_"],
+  [class*=" membersWrap_"],
+  aside:has(> [data-list-id^="members"]),
+  div:has(> [data-list-id^="members"]),
+  aside[aria-label*="Members" i]
+) {
+  display: none !important;
+}
+
+html[data-sidecord-hide-account-dock] :where(
+  [class^="panels_"],
+  [class*=" panels_"]
+) {
+  display: none !important;
+}
+
+html[data-sidecord-simplify-header]
+:where([class^="toolbar_"], [class*=" toolbar_"])
+:where(
+  [class^="search_"],
+  [class*=" search_"],
+  [class^="recentsIcon_"],
+  [class*=" recentsIcon_"],
+  button:has([class^="recentsIcon_"]),
+  button:has([class*=" recentsIcon_"]),
+  a[href*="support.discord.com"]
+) {
+  display: none !important;
+}
+
+html[data-sidecord-simplify-composer]
+:where([class^="channelTextArea_"], [class*=" channelTextArea_"])
+:where([class^="buttons_"], [class*=" buttons_"]),
+html[data-sidecord-simplify-composer] :where(
+  [class^="channelAppLauncher_"],
+  [class*=" channelAppLauncher_"]
+) {
+  display: none !important;
+}
+
+html[data-sidecord-hide-composer]
+:where(form, [class^="form_"], [class*=" form_"])
+:has(:where([class^="channelTextArea_"], [class*=" channelTextArea_"])) {
+  display: none !important;
+}
+
+html[data-sidecord-compact-media] li[id^="chat-messages-"]
+:where(
+  [class^="imageWrapper_"],
+  [class*=" imageWrapper_"],
+  [class^="embedMedia_"],
+  [class*=" embedMedia_"]
+) :is(img, video) {
+  max-height: 260px !important;
+  max-width: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+}
+
+html[data-sidecord-reduce-motion] *,
+html[data-sidecord-reduce-motion] *::before,
+html[data-sidecord-reduce-motion] *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
