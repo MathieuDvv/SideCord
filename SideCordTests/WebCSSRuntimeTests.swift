@@ -213,7 +213,7 @@ final class WebCSSRuntimeTests: XCTestCase {
             XCTAssertNotEqual(fullVisibility[control], "none", control)
         }
         let runtimeStillExists = try await webView.evaluateJavaScript(
-            "window['\(DiscordCSSComposer.runtimeKey)']?.version === 3"
+            "window['\(DiscordCSSComposer.runtimeKey)']?.version === 4"
         ) as! Bool
         XCTAssertTrue(runtimeStillExists)
 
@@ -327,6 +327,116 @@ final class WebCSSRuntimeTests: XCTestCase {
         XCTAssertTrue(repaired)
     }
 
+    func testCuratedThemeOverridesNestedDiscordScopesAndRestoresNativeTheme() async throws {
+        let (webView, navigationWaiter) = try await loadFixture()
+        _ = navigationWaiter
+        _ = try await webView.evaluateJavaScript(
+            """
+            const nativeTheme = document.createElement('style');
+            nativeTheme.textContent = `
+              .theme-midnight.chat_fixture {
+                --background-primary: rgb(1, 2, 3) !important;
+                --channeltextarea-background: rgb(7, 8, 9) !important;
+                --text-normal: rgb(245, 245, 245) !important;
+                background-color: rgb(1, 2, 3);
+                color: rgb(245, 245, 245);
+              }
+              .theme-light.chat_fixture {
+                --background-primary: rgb(248, 249, 250) !important;
+                --channeltextarea-background: rgb(240, 241, 242) !important;
+                --text-normal: rgb(20, 21, 22) !important;
+                background-color: rgb(248, 249, 250);
+                color: rgb(20, 21, 22);
+              }
+              .sidebarList_fixture { background-color: rgb(4, 5, 6); }
+              .channelTextArea_fixture { background-color: rgb(7, 8, 9); }
+            `;
+            document.head.appendChild(nativeTheme);
+            document.getElementById('messages').className = 'theme-midnight chat_fixture';
+            """
+        )
+
+        let css = try runtimeCSS(customCSS: "")
+        let lightSource = DiscordCSSComposer.userScriptSource(
+            css: css,
+            configuration: makeConfiguration(
+                navigation: .docked,
+                composer: .full,
+                theme: .soft,
+                accent: .pink,
+                intensity: 1,
+                colorScheme: .light
+            )
+        )
+        _ = try await webView.evaluateJavaScript(lightSource)
+        try await waitForRuntime()
+
+        let lightState = try await themeFixtureState(in: webView)
+        XCTAssertEqual(lightState["scope"] as? String, "light")
+        XCTAssertEqual(lightState["resolved"] as? String, "light")
+        XCTAssertEqual(lightState["midnight"] as? Bool, true)
+        XCTAssertEqual(lightState["forcedLightClass"] as? Bool, false)
+        XCTAssertNotEqual(lightState["chatBackground"] as? String, "rgb(1, 2, 3)")
+        XCTAssertNotEqual(lightState["sidebarBackground"] as? String, "rgb(4, 5, 6)")
+        XCTAssertNotEqual(lightState["composerBackground"] as? String, "rgb(7, 8, 9)")
+        XCTAssertNotEqual(lightState["chatText"] as? String, "rgb(245, 245, 245)")
+        XCTAssertFalse((lightState["semanticBackground"] as? String ?? "").isEmpty)
+        XCTAssertFalse((lightState["modernBackground"] as? String ?? "").isEmpty)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            const oldMessages = document.getElementById('messages');
+            const replacement = oldMessages.cloneNode(true);
+            oldMessages.replaceWith(replacement);
+            """
+        )
+        try await waitForRuntime()
+        let replacementScope = try await webView.evaluateJavaScript(
+            "document.getElementById('messages').dataset.sidecordThemeScope"
+        ) as? String
+        XCTAssertEqual(replacementScope, "light")
+
+        _ = try await webView.evaluateJavaScript(
+            "document.getElementById('messages').className = 'theme-light chat_fixture'"
+        )
+        let darkSource = DiscordCSSComposer.userScriptSource(
+            css: css,
+            configuration: makeConfiguration(
+                navigation: .docked,
+                composer: .full,
+                theme: .oled,
+                accent: .purple,
+                intensity: 1,
+                colorScheme: .dark
+            )
+        )
+        _ = try await webView.evaluateJavaScript(darkSource)
+        try await waitForRuntime()
+        let darkState = try await themeFixtureState(in: webView)
+        XCTAssertEqual(darkState["scope"] as? String, "dark")
+        XCTAssertEqual(darkState["resolved"] as? String, "dark")
+        XCTAssertEqual(darkState["nativeLight"] as? Bool, true)
+        XCTAssertEqual(darkState["forcedDarkClass"] as? Bool, false)
+        XCTAssertNotEqual(darkState["chatBackground"] as? String, "rgb(248, 249, 250)")
+
+        let nativeSource = DiscordCSSComposer.userScriptSource(
+            css: css,
+            configuration: makeConfiguration(
+                navigation: .docked,
+                composer: .full,
+                theme: .discord,
+                colorScheme: .system
+            )
+        )
+        _ = try await webView.evaluateJavaScript(nativeSource)
+        try await waitForRuntime()
+        let nativeState = try await themeFixtureState(in: webView)
+        XCTAssertEqual(nativeState["hasScope"] as? Bool, false)
+        XCTAssertEqual(nativeState["nativeLight"] as? Bool, true)
+        XCTAssertEqual(nativeState["forcedDarkClass"] as? Bool, false)
+        XCTAssertEqual(nativeState["chatBackground"] as? String, "rgb(248, 249, 250)")
+    }
+
     func testVisualThemeSheetContainsNoLayoutOrVisibilityDeclarations() throws {
         let css = try resource(named: "visual-themes")
         let forbiddenDeclaration = #"(?im)^\s*(display|position|top|right|bottom|left|inset|width|min-width|max-width|height|min-height|max-height|margin|padding|transform|visibility|overflow|pointer-events|z-index)\s*:"#
@@ -340,7 +450,14 @@ final class WebCSSRuntimeTests: XCTestCase {
         XCTAssertTrue(css.contains("--interactive-normal:"))
         XCTAssertTrue(css.contains("--channels-default:"))
         XCTAssertTrue(css.contains("--background-primary:"))
+        XCTAssertTrue(css.contains("--background-base-lowest:"))
+        XCTAssertTrue(css.contains("--background-surface-highest:"))
+        XCTAssertTrue(css.contains("--bg-surface-overlay:"))
         XCTAssertTrue(css.contains("--channeltextarea-background:"))
+        XCTAssertTrue(css.contains("--modal-background:"))
+        XCTAssertTrue(css.contains("--scrollbar-auto-thumb:"))
+        XCTAssertTrue(css.contains("data-sidecord-theme-scope=\"dark\""))
+        XCTAssertTrue(css.contains("data-sidecord-theme-scope=\"light\""))
     }
 
     private func makeConfiguration(
@@ -424,6 +541,34 @@ final class WebCSSRuntimeTests: XCTestCase {
             )
             """
         ) as! [String: String]
+    }
+
+    private func themeFixtureState(in webView: WKWebView) async throws -> [String: Any] {
+        try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const chat = document.getElementById('messages');
+              const sidebar = document.getElementById('channels');
+              const composer = document.getElementById('composer');
+              const chatStyle = getComputedStyle(chat);
+              return {
+                scope: chat.getAttribute('data-sidecord-theme-scope'),
+                hasScope: chat.hasAttribute('data-sidecord-theme-scope'),
+                resolved: document.documentElement.dataset.sidecordResolvedColorScheme,
+                midnight: chat.classList.contains('theme-midnight'),
+                nativeLight: chat.classList.contains('theme-light'),
+                forcedLightClass: document.documentElement.classList.contains('theme-light'),
+                forcedDarkClass: document.documentElement.classList.contains('theme-dark'),
+                chatBackground: chatStyle.backgroundColor,
+                sidebarBackground: getComputedStyle(sidebar).backgroundColor,
+                composerBackground: getComputedStyle(composer).backgroundColor,
+                chatText: chatStyle.color,
+                semanticBackground: chatStyle.getPropertyValue('--background-primary').trim(),
+                modernBackground: chatStyle.getPropertyValue('--background-base-low').trim()
+              };
+            })()
+            """
+        ) as! [String: Any]
     }
 
     private func waitForRuntime() async throws {

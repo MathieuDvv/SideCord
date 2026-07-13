@@ -6,18 +6,17 @@ final class DiscordRailPanel: NSPanel {
     init(settings: AppSettings, railModel: DiscordRailModel) {
         super.init(
             contentRect: .zero,
-            styleMask: [.borderless, .fullSizeContentView],
+            styleMask: [
+                .borderless,
+                .fullSizeContentView,
+                FloatingPanelSpacePolicy.nonactivatingStyle
+            ],
             backing: .buffered,
             defer: true
         )
 
         level = .floating
-        collectionBehavior = [
-            .canJoinAllSpaces,
-            .canJoinAllApplications,
-            .fullScreenAuxiliary,
-            .ignoresCycle
-        ]
+        collectionBehavior = FloatingPanelSpacePolicy.collectionBehavior
         isFloatingPanel = true
         hidesOnDeactivate = false
         isReleasedWhenClosed = false

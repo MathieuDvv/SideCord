@@ -453,7 +453,7 @@ struct SettingsView: View {
         VStack(spacing: 18) {
             SettingsGlassCard(
                 title: "Visual theme",
-                subtitle: "Choose a foundation for the panel. Every preview uses fictional geometry only.",
+                subtitle: "Choose a palette that recolors Discord itself and SideCord’s native chrome. Every preview uses fictional geometry only.",
                 symbol: "paintpalette.fill",
                 tint: .pink
             ) {
@@ -475,7 +475,7 @@ struct SettingsView: View {
 
             SettingsGlassCard(
                 title: "Personalize",
-                subtitle: "Accent and intensity shape SideCord controls without recoloring message content.",
+                subtitle: "Accent and intensity shape Discord’s surfaces, controls, and SideCord chrome while preserving message readability.",
                 symbol: "swatchpalette.fill",
                 tint: .purple
             ) {
@@ -498,7 +498,7 @@ struct SettingsView: View {
 
                 ValueSliderRow(
                     title: "Theme surface intensity",
-                    detail: "Controls how strongly the selected theme colors its surfaces.",
+                    detail: "Controls how strongly the selected palette replaces Discord’s background and surface colors.",
                     value: $settings.themeIntensity,
                     range: 0 ... 1,
                     step: 0.05,
@@ -518,6 +518,10 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 310)
                 }
+
+                Text("System follows your Mac. Light and Dark explicitly override Discord’s account theme inside SideCord.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }

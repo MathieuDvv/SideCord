@@ -107,6 +107,11 @@ final class WebCSSComposerTests: XCTestCase {
 
         XCTAssertTrue(script.contains(DiscordCSSComposer.runtimeKey))
         XCTAssertTrue(script.contains("previousRuntime.update(nextCSS, nextConfiguration)"))
+        XCTAssertTrue(script.contains("previousRuntime.version === 4"))
+        XCTAssertTrue(script.contains("synchronizeDiscordTheme"))
+        XCTAssertTrue(script.contains("synchronizeThemeScopes"))
+        XCTAssertTrue(script.contains("clearThemeScopes"))
+        XCTAssertFalse(script.contains("classList.toggle(\"theme-dark\""))
         XCTAssertTrue(script.contains("new MutationObserver"))
         XCTAssertTrue(script.contains("queueMicrotask"))
         XCTAssertTrue(script.contains("reconcileScheduled"))

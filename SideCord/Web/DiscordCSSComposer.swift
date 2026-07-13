@@ -178,7 +178,7 @@ enum DiscordCSSComposer {
           const messageHandlerName = \(encodedMessageHandlerName);
           const previousRuntime = window[runtimeKey];
 
-          if (previousRuntime && previousRuntime.version === 3 &&
+          if (previousRuntime && previousRuntime.version === 4 &&
               typeof previousRuntime.update === "function") {
             previousRuntime.update(nextCSS, nextConfiguration);
             return;
@@ -199,7 +199,7 @@ enum DiscordCSSComposer {
           };
 
           const state = {
-            version: 3,
+            version: 4,
             css: nextCSS,
             configuration: nextConfiguration,
             drawerOpen: false,
@@ -214,6 +214,7 @@ enum DiscordCSSComposer {
             observedAccountDock: null,
             observedChannelList: null,
             roleElements: Object.create(null),
+            themeScopeElements: new Set(),
             observer: null,
             dockResizeObserver: null,
             mediaQuery: window.matchMedia("(prefers-color-scheme: dark)"),
@@ -241,6 +242,61 @@ enum DiscordCSSComposer {
             const requested = state.configuration.requestedColorScheme;
             if (requested === "dark" || requested === "light") return requested;
             return state.mediaQuery.matches ? "dark" : "light";
+          };
+
+          const shouldOverrideDiscordTheme = () => {
+            const requested = state.configuration.requestedColorScheme;
+            const theme = state.configuration.rootAttributes?.["data-sidecord-theme"];
+            // Discord + System is the one deliberately native combination.
+            // Curated themes follow the Mac appearance, while an explicit
+            // Light/Dark choice always wins over the Discord account setting.
+            return requested !== "system" || theme !== "discord";
+          };
+
+          const synchronizeThemeScopes = (root, scheme) => {
+            const nextScopes = new Set([
+              root,
+              document.body,
+              document.getElementById("app-mount"),
+              ...safeQueryAll(
+                document,
+                ".theme-dark, .theme-light, .theme-darker, .theme-midnight, [data-theme]"
+              )
+            ].filter(Boolean));
+            for (const element of state.themeScopeElements) {
+              if (!nextScopes.has(element) || !element.isConnected) {
+                element.removeAttribute("data-sidecord-theme-scope");
+              }
+            }
+            for (const element of nextScopes) {
+              if (element.getAttribute("data-sidecord-theme-scope") !== scheme) {
+                element.setAttribute("data-sidecord-theme-scope", scheme);
+              }
+            }
+            state.themeScopeElements = nextScopes;
+          };
+
+          const clearThemeScopes = () => {
+            for (const element of state.themeScopeElements) {
+              element.removeAttribute("data-sidecord-theme-scope");
+            }
+            for (const element of safeQueryAll(document, "[data-sidecord-theme-scope]")) {
+              element.removeAttribute("data-sidecord-theme-scope");
+            }
+            state.themeScopeElements.clear();
+          };
+
+          const synchronizeDiscordTheme = root => {
+            if (!shouldOverrideDiscordTheme()) {
+              clearThemeScopes();
+              return;
+            }
+            const scheme = resolvedColorScheme();
+            // Apply SideCord's semantic variables directly on every theme host.
+            // Discord keeps ownership of its account classes/data-theme values,
+            // so changing a theme while SideCord is active is never overwritten
+            // or restored to a stale snapshot.
+            synchronizeThemeScopes(root, scheme);
           };
 
           const setUniqueRole = (role, element) => {
@@ -545,6 +601,7 @@ enum DiscordCSSComposer {
             if (root.getAttribute("data-sidecord-resolved-color-scheme") !== scheme) {
               root.setAttribute("data-sidecord-resolved-color-scheme", scheme);
             }
+            synchronizeDiscordTheme(root);
 
             const variables = state.configuration.rootVariables || {};
             for (const name of managedVariables) {
@@ -700,6 +757,7 @@ enum DiscordCSSComposer {
               "aria-selected",
               "class",
               "data-list-item-id",
+              "data-theme",
               "src"
             ]
           });
@@ -735,6 +793,7 @@ enum DiscordCSSComposer {
 
             const root = currentRoot();
             if (root) {
+              clearThemeScopes();
               for (const name of managedAttributes) root.removeAttribute(name);
               for (const name of managedVariables) root.style.removeProperty(name);
             }

@@ -3,6 +3,19 @@ import XCTest
 @testable import SideCord
 
 final class PanelGeometryTests: XCTestCase {
+    func testFloatingPanelsJoinEverySpaceWithoutMovingSpaceOwnership() {
+        let behavior = FloatingPanelSpacePolicy.collectionBehavior
+
+        XCTAssertTrue(behavior.contains(.canJoinAllSpaces))
+        XCTAssertFalse(behavior.contains(.moveToActiveSpace))
+        XCTAssertTrue(behavior.contains(.canJoinAllApplications))
+        XCTAssertTrue(behavior.contains(.fullScreenAuxiliary))
+        XCTAssertTrue(behavior.contains(.ignoresCycle))
+        XCTAssertTrue(
+            FloatingPanelSpacePolicy.nonactivatingStyle.contains(.nonactivatingPanel)
+        )
+    }
+
     func testRightSidebarAnchorsToUsableFrame() {
         let usable = NSRect(x: 0, y: 40, width: 1_440, height: 860)
         let frame = PanelGeometry.sidebarFrame(

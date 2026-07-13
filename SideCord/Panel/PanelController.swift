@@ -168,7 +168,6 @@ final class PanelController: NSObject, ObservableObject {
         if isVisible, activeDisplayID == displayID {
             repositionForCurrentSettings()
             if activate {
-                NSApp.activate(ignoringOtherApps: true)
                 panel.makeKeyAndOrderFront(nil)
             } else {
                 panel.orderFrontRegardless()
@@ -195,7 +194,6 @@ final class PanelController: NSObject, ObservableObject {
 
         animatePanel(to: targetFrame, alpha: 1, orderOutWhenComplete: false)
         if activate {
-            NSApp.activate(ignoringOtherApps: true)
             panel.makeKeyAndOrderFront(nil)
         }
     }

@@ -255,6 +255,12 @@ final class DiscordWebController: NSObject, ObservableObject {
         customCSSEnabled: Bool,
         injectIntoCurrentPage: Bool
     ) {
+        updateWebViewAppearance(
+            visualTheme: visualTheme,
+            themeIntensity: themeIntensity,
+            colorScheme: themeColorScheme
+        )
+
         let css = DiscordCSSComposer.compose(
             preset: preset,
             compactPresetCSS: compactPresetCSS,
@@ -306,6 +312,67 @@ final class DiscordWebController: NSObject, ObservableObject {
                 }
             }
         }
+    }
+
+    private func updateWebViewAppearance(
+        visualTheme: DiscordVisualTheme,
+        themeIntensity: Double,
+        colorScheme: ThemeColorScheme
+    ) {
+        switch colorScheme {
+        case .system:
+            webView.appearance = nil
+        case .light:
+            webView.appearance = NSAppearance(named: .aqua)
+        case .dark:
+            webView.appearance = NSAppearance(named: .darkAqua)
+        }
+
+        let isDark: Bool
+        switch colorScheme {
+        case .dark:
+            isDark = true
+        case .light:
+            isDark = false
+        case .system:
+            isDark = webView.effectiveAppearance.bestMatch(
+                from: [.darkAqua, .aqua]
+            ) == .darkAqua
+        }
+
+        func color(_ red: Int, _ green: Int, _ blue: Int) -> NSColor {
+            NSColor(
+                srgbRed: CGFloat(red) / 255,
+                green: CGFloat(green) / 255,
+                blue: CGFloat(blue) / 255,
+                alpha: 1
+            )
+        }
+
+        let discordBaseline = isDark ? color(49, 51, 56) : color(255, 255, 255)
+        let themeBackground: NSColor
+        switch (visualTheme, isDark) {
+        case (.systemGlass, true):
+            themeBackground = color(20, 23, 30)
+        case (.systemGlass, false):
+            themeBackground = color(247, 248, 252)
+        case (.oled, true):
+            themeBackground = .black
+        case (.oled, false):
+            themeBackground = .white
+        case (.soft, true):
+            themeBackground = color(41, 38, 49)
+        case (.soft, false):
+            themeBackground = color(255, 249, 251)
+        case (.discord, _):
+            themeBackground = discordBaseline
+        }
+
+        let intensity = min(max(themeIntensity.isFinite ? themeIntensity : 1, 0), 1)
+        webView.underPageBackgroundColor = discordBaseline.blended(
+            withFraction: intensity,
+            of: themeBackground
+        ) ?? themeBackground
     }
 
     private func performRuntimeAction(_ action: String) {

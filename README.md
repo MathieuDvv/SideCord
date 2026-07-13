@@ -15,7 +15,8 @@ resizable, auto-retracting sidebar on every Space.
 - Separate floating Discord server rail beside SideCord and an on-demand channel
   drawer in Focus mode
 - Essential composer controls that keep attachments, GIFs, and emoji available
-- System Glass, Discord, OLED, and Soft themes with light and dark variants
+- System Glass, Discord, OLED, and Soft palettes across Discord surfaces, with
+  System-following or explicitly forced Light and Dark appearances
 - Compact density preset and conservative local custom CSS
 - Discord attachments, downloads, camera, and microphone permission handling
 - Native menu bar, onboarding, a visual Liquid Glass Settings app, Launch at
