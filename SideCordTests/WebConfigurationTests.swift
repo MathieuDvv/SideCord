@@ -3,6 +3,88 @@ import XCTest
 @testable import SideCord
 
 final class WebConfigurationTests: XCTestCase {
+    func testDownloadInstallerPreservesExistingFileUntilInstall() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let destination = directory.appendingPathComponent("archive.txt")
+        let temporary = directory.appendingPathComponent("incoming.txt")
+        try Data("existing".utf8).write(to: destination)
+        try Data("replacement".utf8).write(to: temporary)
+
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "existing")
+        XCTAssertEqual(try String(contentsOf: temporary, encoding: .utf8), "replacement")
+
+        try DownloadFileInstaller.install(
+            temporaryURL: temporary,
+            at: destination
+        )
+
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "replacement")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: temporary.path))
+    }
+
+    func testDownloadInstallerMovesNewFileIntoPlace() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let destination = directory.appendingPathComponent("new.txt")
+        let temporary = directory.appendingPathComponent("incoming.txt")
+        try Data("download".utf8).write(to: temporary)
+
+        try DownloadFileInstaller.install(
+            temporaryURL: temporary,
+            at: destination
+        )
+
+        XCTAssertEqual(try String(contentsOf: destination, encoding: .utf8), "download")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: temporary.path))
+    }
+
+    func testDownloadInstallerPrunesOnlyStaleTemporaryFiles() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let now = Date(timeIntervalSince1970: 10_000)
+        let stale = directory.appendingPathComponent("stale.download")
+        let fresh = directory.appendingPathComponent("fresh.download")
+        try Data("partial".utf8).write(to: stale)
+        try Data("active".utf8).write(to: fresh)
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-7_200)],
+            ofItemAtPath: stale.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-30)],
+            ofItemAtPath: fresh.path
+        )
+
+        let removed = try DownloadFileInstaller.removeStaleTemporaryFiles(
+            olderThan: 3_600,
+            now: now,
+            in: directory
+        )
+
+        XCTAssertEqual(removed, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stale.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fresh.path))
+    }
+
     @MainActor
     func testAttentionModelBaselinesExistingBadgesAndSignalsNewActivity() {
         var currentTime: TimeInterval = 1_000
@@ -61,6 +143,12 @@ final class WebConfigurationTests: XCTestCase {
         currentTime += 1
         model.receiveNotification()
         XCTAssertEqual(model.notificationSequence, 3)
+
+        // Ordinary messages continue to pulse even while the server's unread
+        // state remains true and its mention count does not change.
+        currentTime += 1
+        model.receiveNotification()
+        XCTAssertEqual(model.notificationSequence, 4)
     }
 
     @MainActor

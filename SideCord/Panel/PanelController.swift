@@ -124,6 +124,18 @@ final class PanelController: NSObject, ObservableObject {
         reveal(activate: true)
     }
 
+    func previewNotificationGlow(edge: SidebarEdge, accent: SideCordAccent) {
+        guard canPresentPanel,
+              let screen = attentionScreenForNewPresentation()
+        else { return }
+
+        attentionGlowController.presentNotification(
+            on: screen,
+            edge: edge,
+            color: attentionGlowColor(for: accent)
+        )
+    }
+
     func retract() {
         performRetraction(force: true)
     }
@@ -529,6 +541,10 @@ final class PanelController: NSObject, ObservableObject {
     }
 
     private var attentionGlowColor: NSColor {
+        attentionGlowColor(for: settings.themeAccent)
+    }
+
+    private func attentionGlowColor(for accent: SideCordAccent) -> NSColor {
         func color(_ red: Int, _ green: Int, _ blue: Int) -> NSColor {
             NSColor(
                 srgbRed: CGFloat(red) / 255,
@@ -538,7 +554,7 @@ final class PanelController: NSObject, ObservableObject {
             )
         }
 
-        switch settings.themeAccent {
+        switch accent {
         case .automatic, .blurple: return color(88, 101, 242)
         case .blue: return color(10, 132, 255)
         case .purple: return color(175, 82, 222)

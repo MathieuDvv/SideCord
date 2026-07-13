@@ -1,13 +1,16 @@
 import AppKit
 import Carbon.HIToolbox
+import SwiftUI
 import XCTest
 @testable import SideCord
 
 final class CoreShortcutTests: XCTestCase {
     @MainActor
     func testApplicationEditMenuRoutesStandardCommandsThroughResponderChain() throws {
-        let mainMenu = ApplicationMenuFactory.make()
-        let editMenu = try XCTUnwrap(mainMenu.items.first?.submenu)
+        let mainMenu = ApplicationMenuFactory.make(appName: "SideCord")
+        let editMenu = try XCTUnwrap(
+            mainMenu.items.first { $0.title == "Edit" }?.submenu
+        )
         let expectedCommands: [(String, String, String, NSEvent.ModifierFlags)] = [
             ("Undo", "undo:", "z", [.command]),
             ("Redo", "redo:", "z", [.command, .shift]),
@@ -24,6 +27,119 @@ final class CoreShortcutTests: XCTestCase {
             XCTAssertEqual(item.keyEquivalent, key, title)
             XCTAssertEqual(item.keyEquivalentModifierMask, modifiers, title)
             XCTAssertNil(item.target, title)
+        }
+    }
+
+    @MainActor
+    func testApplicationMenuContainsStandardAppCommands() throws {
+        let settingsTarget = ApplicationMenuSettingsTargetSpy()
+        let mainMenu = ApplicationMenuFactory.make(
+            appName: "SideCord",
+            settingsTarget: settingsTarget
+        )
+        XCTAssertEqual(mainMenu.items.map(\.title), ["SideCord", "Edit", "Window"])
+
+        let appMenu = try XCTUnwrap(
+            mainMenu.items.first { $0.title == "SideCord" }?.submenu
+        )
+        let expectedCommands: [(String, String, String, NSEvent.ModifierFlags)] = [
+            ("About SideCord", "orderFrontStandardAboutPanel:", "", []),
+            ("Hide SideCord", "hide:", "h", [.command]),
+            ("Hide Others", "hideOtherApplications:", "h", [.command, .option]),
+            ("Show All", "unhideAllApplications:", "", []),
+            ("Quit SideCord", "terminate:", "q", [.command])
+        ]
+
+        for (title, action, key, modifiers) in expectedCommands {
+            let item = try XCTUnwrap(appMenu.items.first { $0.title == title })
+            XCTAssertEqual(item.action, Selector((action)), title)
+            XCTAssertEqual(item.keyEquivalent, key, title)
+            XCTAssertEqual(item.keyEquivalentModifierMask, modifiers, title)
+            XCTAssertNil(item.target, title)
+        }
+
+        let settingsItem = try XCTUnwrap(
+            appMenu.items.first { $0.title == "Settings…" }
+        )
+        XCTAssertEqual(settingsItem.action, #selector(ApplicationMenuSettingsTargetSpy.showSettings(_:)))
+        XCTAssertEqual(settingsItem.keyEquivalent, ",")
+        XCTAssertEqual(settingsItem.keyEquivalentModifierMask, [.command])
+        XCTAssertTrue(settingsItem.target === settingsTarget)
+
+        XCTAssertNotNil(appMenu.items.first { $0.title == "Services" }?.submenu)
+    }
+
+    @MainActor
+    func testApplicationWindowMenuRoutesWindowCommandsThroughResponderChain() throws {
+        let mainMenu = ApplicationMenuFactory.make(appName: "SideCord")
+        let windowMenu = try XCTUnwrap(
+            mainMenu.items.first { $0.title == "Window" }?.submenu
+        )
+        let expectedCommands: [(String, String, String)] = [
+            ("Close", "performClose:", "w"),
+            ("Minimize", "performMiniaturize:", "m")
+        ]
+
+        for (title, action, key) in expectedCommands {
+            let item = try XCTUnwrap(windowMenu.items.first { $0.title == title })
+            XCTAssertEqual(item.action, Selector((action)), title)
+            XCTAssertEqual(item.keyEquivalent, key, title)
+            XCTAssertEqual(item.keyEquivalentModifierMask, [.command], title)
+            XCTAssertNil(item.target, title)
+        }
+    }
+
+    @MainActor
+    func testShortcutRecordingSessionKeepsOnlyOneRecorderActive() {
+        let session = ShortcutRecordingSession()
+        let first = ShortcutRecordingParticipantSpy()
+        let second = ShortcutRecordingParticipantSpy()
+
+        session.activate(first)
+        session.activate(first)
+        XCTAssertTrue(session.hasActiveRecorder)
+        XCTAssertEqual(first.cancellationCount, 0)
+
+        session.activate(second)
+        XCTAssertEqual(first.cancellationCount, 1)
+        XCTAssertTrue(session.hasActiveRecorder)
+
+        session.deactivate(first)
+        XCTAssertTrue(session.hasActiveRecorder)
+
+        session.cancel()
+        XCTAssertEqual(second.cancellationCount, 1)
+        XCTAssertFalse(session.hasActiveRecorder)
+    }
+
+    @MainActor
+    func testShortcutRecorderStopsWhenSettingsWindowLosesFocusOrCloses() {
+        let session = ShortcutRecordingSession()
+        let coordinator = ShortcutRecorderView.Coordinator(
+            shortcut: .constant(.optionD),
+            recordingSession: session
+        )
+        let button = NSButton(title: "⌥D", target: nil, action: nil)
+        let window = NSWindow()
+        coordinator.button = button
+        coordinator.hostWindowDidChange(to: window)
+        defer {
+            coordinator.cancelShortcutRecording()
+            coordinator.stopObservingHostWindow()
+        }
+
+        for notificationName in [
+            NSWindow.didResignKeyNotification,
+            NSWindow.willCloseNotification
+        ] {
+            coordinator.beginRecording(button)
+            XCTAssertTrue(coordinator.isRecording)
+            XCTAssertTrue(session.hasActiveRecorder)
+
+            NotificationCenter.default.post(name: notificationName, object: window)
+
+            XCTAssertFalse(coordinator.isRecording)
+            XCTAssertFalse(session.hasActiveRecorder)
         }
     }
 
@@ -65,4 +181,18 @@ final class CoreShortcutTests: XCTestCase {
         }
         XCTAssertNil(manager.registeredShortcut)
     }
+}
+
+@MainActor
+private final class ShortcutRecordingParticipantSpy: ShortcutRecordingParticipant {
+    private(set) var cancellationCount = 0
+
+    func cancelShortcutRecording() {
+        cancellationCount += 1
+    }
+}
+
+@MainActor
+private final class ApplicationMenuSettingsTargetSpy: NSObject {
+    @objc func showSettings(_ sender: Any?) {}
 }

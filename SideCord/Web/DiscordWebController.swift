@@ -104,7 +104,13 @@ final class DiscordWebController: NSObject, ObservableObject {
     private let visualThemesCSS: String
     private var settingsCancellables = Set<AnyCancellable>()
     private var attemptedProcessRecovery = false
-    private var downloadSecurityScopedURLs: [ObjectIdentifier: URL] = [:]
+    private struct PendingDownload {
+        let temporaryURL: URL
+        let destinationURL: URL
+        let securityScopedURL: URL?
+    }
+
+    private var pendingDownloads: [ObjectIdentifier: PendingDownload] = [:]
     private var pendingUserInitiatedMainFrameNavigation = false
     private var runtimeActions = DiscordRuntimeActionQueue()
     private var runtimeDocumentGeneration = 0
@@ -124,6 +130,7 @@ final class DiscordWebController: NSObject, ObservableObject {
         webView = WKWebView(frame: .zero, configuration: configuration)
 
         super.init()
+        _ = try? DownloadFileInstaller.removeStaleTemporaryFiles()
 
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -190,6 +197,7 @@ final class DiscordWebController: NSObject, ObservableObject {
     }
 
     func shutdown() {
+        discardAllPendingDownloads()
         guard isRuntimeMessageHandlerInstalled else { return }
         webView.configuration.userContentController.removeScriptMessageHandler(
             forName: Self.runtimeMessageHandlerName
@@ -793,13 +801,18 @@ extension DiscordWebController: WKDownloadDelegate {
             }
 
             do {
-                if FileManager.default.fileExists(atPath: destination.path) {
-                    try FileManager.default.removeItem(at: destination)
-                }
-                if destination.startAccessingSecurityScopedResource() {
-                    self?.downloadSecurityScopedURLs[ObjectIdentifier(download)] = destination
-                }
-                completionHandler(destination)
+                let temporaryURL = try DownloadFileInstaller.makeTemporaryURL(
+                    for: destination
+                )
+                let securityScopedURL = destination.startAccessingSecurityScopedResource()
+                    ? destination
+                    : nil
+                self?.pendingDownloads[ObjectIdentifier(download)] = PendingDownload(
+                    temporaryURL: temporaryURL,
+                    destinationURL: destination,
+                    securityScopedURL: securityScopedURL
+                )
+                completionHandler(temporaryURL)
             } catch {
                 self?.downloadError = error.localizedDescription
                 completionHandler(nil)
@@ -813,7 +826,20 @@ extension DiscordWebController: WKDownloadDelegate {
     }
 
     func downloadDidFinish(_ download: WKDownload) {
-        releaseSecurityScope(for: download)
+        guard let pending = pendingDownloads.removeValue(
+            forKey: ObjectIdentifier(download)
+        ) else { return }
+
+        defer { pending.securityScopedURL?.stopAccessingSecurityScopedResource() }
+        do {
+            try DownloadFileInstaller.install(
+                temporaryURL: pending.temporaryURL,
+                at: pending.destinationURL
+            )
+        } catch {
+            downloadError = error.localizedDescription
+            try? FileManager.default.removeItem(at: pending.temporaryURL)
+        }
     }
 
     func download(
@@ -821,13 +847,91 @@ extension DiscordWebController: WKDownloadDelegate {
         didFailWithError error: Error,
         resumeData: Data?
     ) {
-        releaseSecurityScope(for: download)
+        discardPendingDownload(for: download)
         downloadError = error.localizedDescription
     }
 
-    private func releaseSecurityScope(for download: WKDownload) {
-        downloadSecurityScopedURLs
-            .removeValue(forKey: ObjectIdentifier(download))?
-            .stopAccessingSecurityScopedResource()
+    private func discardPendingDownload(for download: WKDownload) {
+        guard let pending = pendingDownloads.removeValue(
+            forKey: ObjectIdentifier(download)
+        ) else { return }
+        try? FileManager.default.removeItem(at: pending.temporaryURL)
+        pending.securityScopedURL?.stopAccessingSecurityScopedResource()
+    }
+
+    private func discardAllPendingDownloads() {
+        for pending in pendingDownloads.values {
+            try? FileManager.default.removeItem(at: pending.temporaryURL)
+            pending.securityScopedURL?.stopAccessingSecurityScopedResource()
+        }
+        pendingDownloads.removeAll()
+    }
+}
+
+enum DownloadFileInstaller {
+    static func makeTemporaryURL(
+        for destinationURL: URL,
+        fileManager: FileManager = .default
+    ) throws -> URL {
+        let temporaryDirectory = temporaryDirectory(fileManager: fileManager)
+        try fileManager.createDirectory(
+            at: temporaryDirectory,
+            withIntermediateDirectories: true
+        )
+
+        let pathExtension = destinationURL.pathExtension.isEmpty
+            ? "download"
+            : destinationURL.pathExtension
+        return temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(pathExtension)
+    }
+
+    @discardableResult
+    static func removeStaleTemporaryFiles(
+        olderThan maximumAge: TimeInterval = 24 * 60 * 60,
+        now: Date = Date(),
+        in directory: URL? = nil,
+        fileManager: FileManager = .default
+    ) throws -> Int {
+        let directory = directory ?? temporaryDirectory(fileManager: fileManager)
+        guard fileManager.fileExists(atPath: directory.path) else { return 0 }
+
+        let files = try fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )
+        var removalCount = 0
+        for file in files {
+            let values = try file.resourceValues(forKeys: [.contentModificationDateKey])
+            let modificationDate = values.contentModificationDate ?? .distantPast
+            guard now.timeIntervalSince(modificationDate) >= max(0, maximumAge) else {
+                continue
+            }
+            try fileManager.removeItem(at: file)
+            removalCount += 1
+        }
+        return removalCount
+    }
+
+    static func install(
+        temporaryURL: URL,
+        at destinationURL: URL,
+        fileManager: FileManager = .default
+    ) throws {
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            _ = try fileManager.replaceItemAt(
+                destinationURL,
+                withItemAt: temporaryURL
+            )
+        } else {
+            try fileManager.moveItem(at: temporaryURL, to: destinationURL)
+        }
+    }
+
+    private static func temporaryDirectory(fileManager: FileManager) -> URL {
+        fileManager.temporaryDirectory
+            .appendingPathComponent("SideCordDownloads", isDirectory: true)
     }
 }

@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var shortcutDraft: ShortcutDefinition
     @State private var navigationShortcutDraft: ShortcutDefinition
     @State private var presentedError: PresentedSettingsError?
+    @StateObject private var shortcutRecordingSession: ShortcutRecordingSession
 
     init(
         settings: AppSettings,
@@ -31,6 +32,9 @@ struct SettingsView: View {
         self.onShortcutsReset = onShortcutsReset
         _shortcutDraft = State(initialValue: settings.shortcut)
         _navigationShortcutDraft = State(initialValue: settings.navigationShortcut)
+        _shortcutRecordingSession = StateObject(
+            wrappedValue: ShortcutRecordingSession()
+        )
     }
 
     var body: some View {
@@ -49,6 +53,9 @@ struct SettingsView: View {
                 || launchAtLoginController.requiresApproval
             shortcutDraft = settings.shortcut
             navigationShortcutDraft = settings.navigationShortcut
+        }
+        .onDisappear {
+            shortcutRecordingSession.cancel()
         }
         .confirmationDialog(
             "Reset every SideCord preference?",
@@ -345,16 +352,25 @@ struct SettingsView: View {
                 FloatingRailSchematic(
                     edge: settings.sidebarEdge,
                     isEnabled: settings.floatingRailEnabled
+                        && settings.discordLayoutOptions.navigationPresentation != .docked
                 )
                 .frame(height: 92)
                 .accessibilityHidden(true)
 
                 SettingsToggleRow(
                     title: "Floating server rail",
-                    detail: "Show servers and direct messages in a separate strip beside the SideCord window. Turn this off to hide the strip completely.",
+                    detail: settings.discordLayoutOptions.navigationPresentation == .docked
+                        ? "Docked navigation already keeps servers inside SideCord. Choose Compact or Drawer to use the floating rail."
+                        : "Show servers and direct messages in a separate strip beside the SideCord window. Turn this off to hide the strip completely.",
                     symbol: "rectangle.portrait.on.rectangle.portrait.angled.fill",
                     tint: .indigo,
                     isOn: $settings.floatingRailEnabled
+                )
+                .disabled(settings.discordLayoutOptions.navigationPresentation == .docked)
+                .opacity(
+                    settings.discordLayoutOptions.navigationPresentation == .docked
+                        ? 0.62
+                        : 1
                 )
 
                 SettingsDivider()
@@ -548,7 +564,8 @@ struct SettingsView: View {
                     title: "Show or hide SideCord",
                     detail: "Toggle the floating panel from anywhere.",
                     symbol: "rectangle.on.rectangle.angled",
-                    shortcut: shortcutBinding
+                    shortcut: shortcutBinding,
+                    recordingSession: shortcutRecordingSession
                 )
 
                 SettingsDivider()
@@ -557,7 +574,8 @@ struct SettingsView: View {
                     title: "Open navigation",
                     detail: "Temporarily surface Discord navigation in compact layouts.",
                     symbol: "sidebar.leading",
-                    shortcut: navigationShortcutBinding
+                    shortcut: navigationShortcutBinding,
+                    recordingSession: shortcutRecordingSession
                 )
 
                 Text("Select a shortcut button, then press a key with ⌘, ⌥, ⌃, or ⇧. Press Escape to cancel recording.")
@@ -1564,6 +1582,7 @@ private struct ShortcutSettingsRow: View {
     let detail: String
     let symbol: String
     @Binding var shortcut: ShortcutDefinition
+    let recordingSession: ShortcutRecordingSession
 
     var body: some View {
         HStack(spacing: 13) {
@@ -1575,7 +1594,10 @@ private struct ShortcutSettingsRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 18)
-            ShortcutRecorderView(shortcut: $shortcut)
+            ShortcutRecorderView(
+                shortcut: $shortcut,
+                recordingSession: recordingSession
+            )
                 .accessibilityLabel(title)
         }
     }

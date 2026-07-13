@@ -35,6 +35,8 @@ final class WebCSSRuntimeTests: XCTestCase {
               const incoming = document.createElement('div');
               incoming.id = 'incoming-call';
               incoming.className = 'ringingIncoming_fixture';
+              incoming.style.cssText =
+                'position: fixed; top: 20px; left: 20px; width: 240px; height: 80px';
               document.body.appendChild(incoming);
             })()
             """
@@ -53,6 +55,64 @@ final class WebCSSRuntimeTests: XCTestCase {
         )
         try await waitForRuntime()
         XCTAssertEqual(recorder.incomingCallStates, [true, false])
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const accessibleIncoming = document.createElement('div');
+              accessibleIncoming.id = 'accessible-incoming-call';
+              accessibleIncoming.setAttribute('role', 'dialog');
+              accessibleIncoming.setAttribute('aria-label', 'Incoming call from Fixture');
+              accessibleIncoming.style.cssText =
+                'position: fixed; top: 20px; left: 20px; width: 240px; height: 80px';
+              document.body.appendChild(accessibleIncoming);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.incomingCallStates, [true, false, true])
+
+        _ = try await webView.evaluateJavaScript(
+            "document.getElementById('accessible-incoming-call').setAttribute('aria-hidden', 'true')"
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.incomingCallStates, [true, false, true, false])
+
+        _ = try await webView.evaluateJavaScript(
+            "document.getElementById('accessible-incoming-call').remove()"
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.incomingCallStates, [true, false, true, false])
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const hiddenContainer = document.createElement('div');
+              hiddenContainer.id = 'hidden-call-container';
+              hiddenContainer.setAttribute('aria-hidden', 'true');
+              const cachedIncoming = document.createElement('div');
+              cachedIncoming.className = 'ringingIncoming_cached';
+              cachedIncoming.style.cssText =
+                'position: fixed; top: 20px; left: 20px; width: 240px; height: 80px';
+              hiddenContainer.appendChild(cachedIncoming);
+              document.body.appendChild(hiddenContainer);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.incomingCallStates, [true, false, true, false])
+
+        _ = try await webView.evaluateJavaScript(
+            "document.getElementById('hidden-call-container').removeAttribute('aria-hidden')"
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.incomingCallStates, [true, false, true, false, true])
+
+        _ = try await webView.evaluateJavaScript(
+            "document.getElementById('hidden-call-container').style.opacity = '0'"
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.incomingCallStates, [true, false, true, false, true, false])
     }
 
     func testNotificationBridgeReportsNoNotificationContentAndPreservesConstructor() async throws {
@@ -74,8 +134,43 @@ final class WebCSSRuntimeTests: XCTestCase {
                     static permission = 'granted';
                     static requestPermission() { return Promise.resolve('granted'); }
                   }
+                  class FixtureServiceWorkerRegistration {
+                    constructor(scope = 'https://discord.com/') {
+                      this.scope = scope;
+                    }
+                    showNotification(title) {
+                      window.fixtureServiceWorkerCallCount += 1;
+                      if (title === 'throw') return Promise.reject(new Error('fixture failure'));
+                      window.fixtureNotificationTimestamp += 1;
+                      window.fixtureServiceWorkerNotifications = [{
+                        tag: 'fixture-notification',
+                        timestamp: window.fixtureNotificationTimestamp
+                      }];
+                      return Promise.resolve('shown');
+                    }
+                    getNotifications() {
+                      return Promise.resolve(window.fixtureServiceWorkerNotifications);
+                    }
+                  }
+                  window.fixtureServiceWorkerCallCount = 0;
+                  window.fixtureNotificationTimestamp = 0;
+                  window.fixtureServiceWorkerNotifications = [];
                   window.Notification = FixtureNotification;
                   window.fixtureOriginalNotification = FixtureNotification;
+                  window.ServiceWorkerRegistration = FixtureServiceWorkerRegistration;
+                  window.fixtureServiceWorkerRegistration =
+                    new FixtureServiceWorkerRegistration();
+                  window.fixtureServiceWorkerRegistrations = [
+                    window.fixtureServiceWorkerRegistration
+                  ];
+                  Object.defineProperty(navigator, 'serviceWorker', {
+                    configurable: true,
+                    value: {
+                      getRegistrations: () => Promise.resolve(
+                        [...window.fixtureServiceWorkerRegistrations]
+                      )
+                    }
+                  });
                 })();
                 """,
                 injectionTime: .atDocumentStart,
@@ -99,6 +194,9 @@ final class WebCSSRuntimeTests: XCTestCase {
             baseURL: URL(string: "https://discord.com/app")!
         )
         await fulfillment(of: [loaded], timeout: 5)
+        let serviceWorkerNotificationsAreBaselined = try await
+            waitForServiceWorkerNotificationBaseline(in: webView)
+        XCTAssertTrue(serviceWorkerNotificationsAreBaselined)
 
         let state = try await webView.evaluateJavaScript(
             """
@@ -122,6 +220,53 @@ final class WebCSSRuntimeTests: XCTestCase {
         XCTAssertEqual(recorder.notificationPayloads.count, 1)
         XCTAssertEqual(Set(recorder.notificationPayloads[0].keys), ["type"])
 
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const historicalRegistration = {
+                scope: 'https://discord.com/historical-worker/',
+                getNotifications: () => Promise.resolve([{
+                  tag: 'historical-notification',
+                  timestamp: 1
+                }])
+              };
+              window.fixtureServiceWorkerRegistrations.unshift(
+                historicalRegistration
+              );
+              return true;
+            })()
+            """
+        )
+        try await Task.sleep(for: .milliseconds(1_100))
+        XCTAssertEqual(recorder.notificationPayloads.count, 1)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              new ServiceWorkerRegistration().showNotification(
+                'private service title',
+                { body: 'private service body' }
+              );
+              return true;
+            })()
+            """
+        )
+        let serviceWorkerNotificationWasReported = try await waitForNotificationCount(
+            2,
+            recorder: recorder
+        )
+        XCTAssertTrue(serviceWorkerNotificationWasReported)
+        let serviceWorkerState = try await webView.evaluateJavaScript(
+            """
+            ({
+              callCount: window.fixtureServiceWorkerCallCount
+            })
+            """
+        ) as! [String: Any]
+        XCTAssertEqual(serviceWorkerState["callCount"] as? Int, 1)
+        XCTAssertEqual(recorder.notificationPayloads.count, 2)
+        XCTAssertEqual(Set(recorder.notificationPayloads[1].keys), ["type"])
+
         do {
             _ = try await webView.evaluateJavaScript("new Notification('throw')")
             XCTFail("Expected the fixture notification constructor to throw")
@@ -129,8 +274,198 @@ final class WebCSSRuntimeTests: XCTestCase {
             // A failed constructor must not produce a native attention event.
         }
         try await waitForRuntime()
-        XCTAssertEqual(recorder.notificationPayloads.count, 1)
+        XCTAssertEqual(recorder.notificationPayloads.count, 2)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              new ServiceWorkerRegistration()
+                .showNotification('throw')
+                .catch(() => {});
+              return true;
+            })()
+            """
+        )
+        try await Task.sleep(for: .milliseconds(1_100))
+        XCTAssertEqual(recorder.notificationPayloads.count, 2)
         _ = navigationWaiter
+    }
+
+    func testMessageActivityBridgeIgnoresBaselineAndHistoryButReportsRepeatedAppends() async throws {
+        let recorder = RuntimeMessageRecorder()
+        let (webView, navigationWaiter) = try await loadFixture(messageRecorder: recorder)
+        _ = navigationWaiter
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const timeline = document.createElement('ol');
+              timeline.id = 'message-timeline';
+              timeline.setAttribute('data-list-id', 'chat-messages');
+              const appendMessage = (id, text) => {
+                const message = document.createElement('li');
+                message.id = id;
+                const content = document.createElement('span');
+                content.textContent = text;
+                message.append(content);
+                timeline.append(message);
+              };
+              appendMessage('chat-messages-1-100', 'historical private text');
+              appendMessage('chat-messages-1-101', 'latest private text');
+              document.getElementById('messages').prepend(timeline);
+            })()
+            """
+        )
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.userScriptSource(
+                css: try runtimeCSS(customCSS: ""),
+                configuration: makeConfiguration(navigation: .docked, composer: .full)
+            )
+        )
+
+        // The initial timeline must remain quiet long enough to become the
+        // runtime's history baseline.
+        let messageTrackingIsArmed = try await waitForMessageTracking(in: webView)
+        XCTAssertTrue(messageTrackingIsArmed)
+        XCTAssertTrue(recorder.notificationPayloads.isEmpty)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const older = document.createElement('li');
+              older.id = 'chat-messages-1-99';
+              older.textContent = 'older private history';
+              document.getElementById('message-timeline').prepend(older);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertTrue(recorder.notificationPayloads.isEmpty)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            document.querySelector('#chat-messages-1-101 span')
+              .append(document.createElement('button'))
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertTrue(recorder.notificationPayloads.isEmpty)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const ordinary = document.createElement('li');
+              ordinary.id = 'chat-messages-1-102';
+              ordinary.textContent = 'ordinary non-notifying message';
+              document.getElementById('message-timeline').append(ordinary);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertTrue(recorder.notificationPayloads.isEmpty)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const incoming = document.createElement('li');
+              incoming.id = 'chat-messages-1-103';
+              incoming.className = 'mentioned_fixture';
+              incoming.textContent = 'new private message';
+              document.getElementById('message-timeline').append(incoming);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 1)
+        let firstPayload = try XCTUnwrap(recorder.notificationPayloads.first)
+        XCTAssertEqual(Set(firstPayload.keys), ["type"])
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const repeated = document.createElement('li');
+              repeated.setAttribute('data-list-item-id', 'chat-messages___1_104');
+              repeated.className = 'mentioned_fixture';
+              repeated.textContent = 'another private message';
+              document.getElementById('message-timeline').append(repeated);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 2)
+        let lastPayload = try XCTUnwrap(recorder.notificationPayloads.last)
+        XCTAssertEqual(Set(lastPayload.keys), ["type"])
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const existing = document.querySelector(
+                '[data-list-item-id="chat-messages___1_104"]'
+              );
+              existing.replaceWith(existing.cloneNode(true));
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 2)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            document.querySelector('[data-list-item-id="chat-messages___1_104"]')
+              .setAttribute('data-list-item-id', 'chat-messages___1_105')
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 3)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const channel = document.getElementById('channel');
+              channel.setAttribute('aria-current', 'page');
+              channel.className = 'modeMuted_fixture';
+              const mutedMessage = document.createElement('li');
+              mutedMessage.id = 'chat-messages-1-106';
+              mutedMessage.className = 'mentioned_fixture';
+              document.getElementById('message-timeline').append(mutedMessage);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 3)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              document.getElementById('channel').className = '';
+              const unmutedMessage = document.createElement('li');
+              unmutedMessage.id = 'chat-messages-1-107';
+              unmutedMessage.className = 'mentioned_fixture';
+              document.getElementById('message-timeline').append(unmutedMessage);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 4)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const timeline = document.getElementById('message-timeline');
+              const message = id => {
+                const element = document.createElement('li');
+                element.id = id;
+                return element;
+              };
+              timeline.replaceChildren(
+                message('chat-messages-2-200'),
+                message('chat-messages-2-201')
+              );
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 4)
     }
 
     func testFloatingRailBridgeUsesLiveDiscordNodesAndSurvivesRerenders() async throws {
@@ -342,7 +677,7 @@ final class WebCSSRuntimeTests: XCTestCase {
             XCTAssertNotEqual(fullVisibility[control], "none", control)
         }
         let runtimeStillExists = try await webView.evaluateJavaScript(
-            "window['\(DiscordCSSComposer.runtimeKey)']?.version === 4"
+            "window['\(DiscordCSSComposer.runtimeKey)']?.version === 5"
         ) as! Bool
         XCTAssertTrue(runtimeStillExists)
 
@@ -751,6 +1086,41 @@ final class WebCSSRuntimeTests: XCTestCase {
 
     private func waitForRuntime() async throws {
         try await Task.sleep(for: .milliseconds(120))
+    }
+
+    private func waitForNotificationCount(
+        _ expectedCount: Int,
+        recorder: RuntimeMessageRecorder
+    ) async throws -> Bool {
+        for _ in 0..<30 {
+            if recorder.notificationPayloads.count >= expectedCount { return true }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        return false
+    }
+
+    private func waitForServiceWorkerNotificationBaseline(
+        in webView: WKWebView
+    ) async throws -> Bool {
+        for _ in 0..<30 {
+            let isBaselined = try await webView.evaluateJavaScript(
+                "window['\(DiscordCSSComposer.notificationBridgeKey)']?.serviceWorkerNotificationsBaselined === true"
+            ) as! Bool
+            if isBaselined { return true }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        return false
+    }
+
+    private func waitForMessageTracking(in webView: WKWebView) async throws -> Bool {
+        for _ in 0..<40 {
+            let isArmed = try await webView.evaluateJavaScript(
+                "window['\(DiscordCSSComposer.runtimeKey)']?.messageTrackingArmed === true"
+            ) as! Bool
+            if isArmed { return true }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        return false
     }
 
     private static let fixtureHTML = """

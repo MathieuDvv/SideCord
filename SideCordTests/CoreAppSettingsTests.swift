@@ -234,6 +234,81 @@ final class CoreAppSettingsTests: XCTestCase {
     }
 
     @MainActor
+    func testOnboardingDraftDefersAndAppliesSettingsAsOneChoiceSet() {
+        let settings = AppSettings(defaults: makeDefaults())
+        settings.sidebarEdge = .right
+        settings.edgeHoverEnabled = true
+        settings.applyDiscordLayoutMode(.full)
+        settings.floatingRailEnabled = true
+        settings.visualTheme = .systemGlass
+        settings.themeAccent = .automatic
+        settings.notificationGlowEnabled = true
+        settings.launchAtLoginEnabled = false
+
+        var draft = OnboardingDraft(settings: settings, launchAtLoginEnabled: false)
+        draft.sidebarEdge = .left
+        draft.edgeHoverEnabled = false
+        draft.layoutMode = .reader
+        draft.floatingRailEnabled = false
+        draft.visualTheme = .oled
+        draft.themeAccent = .purple
+        draft.notificationGlowEnabled = false
+        draft.launchAtLoginEnabled = true
+
+        XCTAssertEqual(settings.sidebarEdge, .right)
+        XCTAssertTrue(settings.edgeHoverEnabled)
+        XCTAssertEqual(settings.discordLayoutMode, .full)
+        XCTAssertTrue(settings.floatingRailEnabled)
+        XCTAssertEqual(settings.visualTheme, .systemGlass)
+        XCTAssertEqual(settings.themeAccent, .automatic)
+        XCTAssertTrue(settings.notificationGlowEnabled)
+        XCTAssertFalse(settings.launchAtLoginEnabled)
+
+        draft.apply(to: settings)
+
+        XCTAssertEqual(settings.sidebarEdge, .left)
+        XCTAssertFalse(settings.edgeHoverEnabled)
+        XCTAssertEqual(settings.discordLayoutMode, .reader)
+        XCTAssertEqual(settings.discordLayoutOptions, .reader)
+        XCTAssertFalse(settings.floatingRailEnabled)
+        XCTAssertEqual(settings.visualTheme, .oled)
+        XCTAssertEqual(settings.themeAccent, .purple)
+        XCTAssertFalse(settings.notificationGlowEnabled)
+        XCTAssertTrue(settings.launchAtLoginEnabled)
+    }
+
+    @MainActor
+    func testOnboardingDraftReportsFloatingRailCompatibility() {
+        let settings = AppSettings(defaults: makeDefaults())
+        var draft = OnboardingDraft(settings: settings, launchAtLoginEnabled: false)
+
+        draft.layoutMode = .full
+        XCTAssertFalse(draft.floatingRailIsAvailable)
+
+        draft.layoutMode = .focus
+        XCTAssertTrue(draft.floatingRailIsAvailable)
+
+        draft.layoutMode = .reader
+        XCTAssertTrue(draft.floatingRailIsAvailable)
+
+        draft.customLayoutOptions = DiscordLayoutOptions(navigationPresentation: .docked)
+        draft.layoutMode = .custom
+        XCTAssertFalse(draft.floatingRailIsAvailable)
+    }
+
+    @MainActor
+    func testOnboardingDraftKeepsAnExistingCustomLayoutAvailable() {
+        let settings = AppSettings(defaults: makeDefaults())
+        settings.applyDiscordLayoutMode(.custom)
+
+        var draft = OnboardingDraft(settings: settings, launchAtLoginEnabled: false)
+        XCTAssertTrue(draft.includesCustomLayoutChoice)
+
+        draft.layoutMode = .focus
+        XCTAssertTrue(draft.includesCustomLayoutChoice)
+    }
+
+    @MainActor
     func testPartialAndCorruptCustomLayoutPersistence() throws {
         let partialDefaults = makeDefaults()
         partialDefaults.set("custom", forKey: "settings.discordLayoutMode")

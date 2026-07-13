@@ -107,7 +107,7 @@ final class WebCSSComposerTests: XCTestCase {
 
         XCTAssertTrue(script.contains(DiscordCSSComposer.runtimeKey))
         XCTAssertTrue(script.contains("previousRuntime.update(nextCSS, nextConfiguration)"))
-        XCTAssertTrue(script.contains("previousRuntime.version === 4"))
+        XCTAssertTrue(script.contains("previousRuntime.version === 5"))
         XCTAssertTrue(script.contains("synchronizeDiscordTheme"))
         XCTAssertTrue(script.contains("synchronizeThemeScopes"))
         XCTAssertTrue(script.contains("clearThemeScopes"))
@@ -133,6 +133,18 @@ final class WebCSSComposerTests: XCTestCase {
         XCTAssertFalse(script.contains("cloneNode"))
         XCTAssertFalse(script.contains("stopPropagation"))
         XCTAssertFalse(script.contains("preventDefault"))
+    }
+
+    func testNotificationBridgeCoversPageAndServiceWorkerNotifications() {
+        let script = DiscordCSSComposer.notificationBridgeUserScriptSource()
+
+        XCTAssertTrue(script.contains("new Proxy(OriginalNotification"))
+        XCTAssertTrue(script.contains("getRegistrations"))
+        XCTAssertTrue(script.contains("getNotifications"))
+        XCTAssertTrue(script.contains("knownServiceWorkerNotificationsByScope"))
+        XCTAssertTrue(script.contains(#"type: "notification""#))
+        XCTAssertFalse(script.contains("notification.title"))
+        XCTAssertFalse(script.contains("notification.body"))
     }
 
     func testRuntimeActionsAreAllowListed() {

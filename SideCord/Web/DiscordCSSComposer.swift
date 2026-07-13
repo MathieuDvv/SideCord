@@ -179,7 +179,7 @@ enum DiscordCSSComposer {
           const messageHandlerName = \(encodedMessageHandlerName);
           const previousRuntime = window[runtimeKey];
 
-          if (previousRuntime && previousRuntime.version === 4 &&
+          if (previousRuntime && previousRuntime.version === 5 &&
               typeof previousRuntime.update === "function") {
             previousRuntime.update(nextCSS, nextConfiguration);
             return;
@@ -190,6 +190,18 @@ enum DiscordCSSComposer {
 
           const tokenSelector = name =>
             `[class^="${name}_"], [class*=" ${name}_"]`;
+          const messageSelector =
+            `[id^="chat-messages-"], ` +
+              `[data-list-item-id^="chat-messages___"]`;
+          const messageTimelineSelector =
+            `[data-list-id="chat-messages"], ` +
+              `[role="log"][aria-label*="messages" i], ` +
+              `ol[aria-label*="messages" i]`;
+          const incomingCallSelector =
+            `${tokenSelector("ringingIncoming")}, ` +
+              `${tokenSelector("incomingCall")}, ` +
+              `[role="dialog"][aria-label*="incoming call" i], ` +
+              `[aria-modal="true"][aria-label*="incoming call" i]`;
           const safeQuery = (root, selector) => {
             try { return root ? root.querySelector(selector) : null; }
             catch (_) { return null; }
@@ -200,7 +212,7 @@ enum DiscordCSSComposer {
           };
 
           const state = {
-            version: 4,
+            version: 5,
             css: nextCSS,
             configuration: nextConfiguration,
             drawerOpen: false,
@@ -211,6 +223,14 @@ enum DiscordCSSComposer {
             railReportTimer: 0,
             lastRailPayload: "",
             incomingCallActive: false,
+            messageScanTimer: 0,
+            messageArmTimer: 0,
+            messageTrackingArmed: false,
+            messageBaselineSignature: "",
+            messageContext: "",
+            messageLastKey: null,
+            messageMaxSnowflake: null,
+            messageKnownKeys: new Set(),
             railElements: new Map(),
             observedRoot: null,
             observedAccountDock: null,
@@ -245,6 +265,9 @@ enum DiscordCSSComposer {
             state.incomingCallActive = nextActive;
             postRuntimeMessage({ type: "incomingCall", active: nextActive });
           };
+          const reportMessageActivity = () => postRuntimeMessage({
+            type: "notification"
+          });
 
           const resolvedColorScheme = () => {
             const requested = state.configuration.requestedColorScheme;
@@ -368,6 +391,211 @@ enum DiscordCSSComposer {
 
           const safeClassName = element =>
             typeof element?.className === "string" ? element.className : "";
+          const isVisiblyPresented = element => {
+            if (!element?.isConnected) return false;
+            for (let node = element; node; node = node.parentElement) {
+              if (node.hidden || node.getAttribute?.("aria-hidden") === "true") {
+                return false;
+              }
+              const style = getComputedStyle(node);
+              if (style.display === "none" || style.visibility === "hidden" ||
+                  Number(style.opacity) === 0) return false;
+            }
+            const bounds = element.getBoundingClientRect();
+            if (bounds.width <= 0 || bounds.height <= 0) return false;
+            if (window.innerWidth <= 0 || window.innerHeight <= 0) return true;
+            return bounds.bottom > 0 && bounds.right > 0 &&
+              bounds.top < window.innerHeight && bounds.left < window.innerWidth;
+          };
+          const hasVisibleIncomingCall = () => safeQueryAll(
+            document,
+            incomingCallSelector
+          ).some(isVisiblyPresented);
+          const currentChannelIsMuted = () => {
+            const selected = safeQuery(
+              document,
+              `[data-list-item-id^="channels___"][aria-selected="true"], ` +
+                `[data-list-item-id^="private-channels-"][aria-selected="true"], ` +
+                `a[aria-current="page"][href*="/channels/"]`
+            );
+            if (!selected) return false;
+            const row = selected.closest(
+              `${tokenSelector("containerDefault")}, ` +
+                `${tokenSelector("channel")}, li`
+            ) || selected;
+            const stateText = `${safeClassName(row)} ` +
+              `${row.getAttribute("aria-label") || ""}`;
+            return /(^|\\s)(?:modeMuted|muted)_/i.test(stateText) ||
+              /\\bmuted\\b/i.test(stateText) ||
+              !!safeQuery(row, `${tokenSelector("modeMuted")}, ${tokenSelector("muted")}`);
+          };
+          const messageHasNotificationSemantic = descriptor => {
+            const element = descriptor?.element;
+            return !!element && (
+              element.matches?.(tokenSelector("mentioned")) ||
+              !!safeQuery(element, tokenSelector("mentioned"))
+            );
+          };
+          const timelineFallbackIsAllowed = descriptors => {
+            const hasExactPageNotifications =
+              typeof window.Notification === "function" &&
+              window.Notification.permission === "granted";
+            return !hasExactPageNotifications &&
+              !currentChannelIsMuted() &&
+              descriptors.some(messageHasNotificationSemantic);
+          };
+          const normalizedSnowflake = value => {
+            const digits = String(value || "").replace(/^0+/, "");
+            return digits || "0";
+          };
+          const compareSnowflakes = (left, right) => {
+            const a = normalizedSnowflake(left);
+            const b = normalizedSnowflake(right);
+            if (a.length !== b.length) return a.length < b.length ? -1 : 1;
+            return a === b ? 0 : (a < b ? -1 : 1);
+          };
+          const messageDescriptor = element => {
+            const elementID = element?.getAttribute?.("id") || "";
+            const listID = element?.getAttribute?.("data-list-item-id") || "";
+            const match = elementID.match(/^chat-messages-(\\d+)-(\\d+)$/) ||
+              listID.match(/^chat-messages___(\\d+)_(\\d+)$/);
+            if (!match) return null;
+            return {
+              key: `${match[1]}:${match[2]}`,
+              channel: match[1],
+              snowflake: normalizedSnowflake(match[2]),
+              element
+            };
+          };
+          const findMessageTimeline = () => {
+            const explicit = safeQuery(document, messageTimelineSelector);
+            if (explicit) return explicit;
+            const message = safeQuery(document, messageSelector);
+            return message?.parentElement || null;
+          };
+          const collectMessageSnapshot = () => {
+            const timeline = findMessageTimeline();
+            const descriptors = [];
+            const seen = new Set();
+            for (const element of safeQueryAll(timeline, messageSelector)) {
+              const descriptor = messageDescriptor(element);
+              if (!descriptor || seen.has(descriptor.key)) continue;
+              seen.add(descriptor.key);
+              descriptors.push(descriptor);
+              if (descriptors.length >= 500) break;
+            }
+            const last = descriptors[descriptors.length - 1] || null;
+            const pathContext = location.pathname.match(
+              /\\/channels\\/(?:@me|\\d+)\\/(\\d+)/
+            )?.[1] || location.pathname;
+            return {
+              timeline,
+              descriptors,
+              context: last?.channel || pathContext,
+              last
+            };
+          };
+          const messageSnapshotSignature = snapshot =>
+            `${snapshot.context}|${snapshot.descriptors.map(item => item.key).join(",")}`;
+          const rememberMessageSnapshot = (snapshot, resetKnown) => {
+            if (resetKnown) {
+              state.messageKnownKeys.clear();
+              state.messageMaxSnowflake = null;
+            }
+            for (const descriptor of snapshot.descriptors) {
+              state.messageKnownKeys.add(descriptor.key);
+              if (!state.messageMaxSnowflake || compareSnowflakes(
+                descriptor.snowflake,
+                state.messageMaxSnowflake
+              ) > 0) {
+                state.messageMaxSnowflake = descriptor.snowflake;
+              }
+            }
+            // The live timeline is virtualized. Keep recent identities for
+            // rerenders, while the greatest snowflake remains the authoritative
+            // guard against older history becoming attention.
+            if (state.messageKnownKeys.size > 1_000) {
+              state.messageKnownKeys = new Set(
+                snapshot.descriptors.slice(-500).map(item => item.key)
+              );
+            }
+            state.messageContext = snapshot.context;
+            state.messageLastKey = snapshot.last?.key || null;
+          };
+          const beginMessageBaseline = snapshot => {
+            if (state.messageArmTimer) clearTimeout(state.messageArmTimer);
+            state.messageTrackingArmed = false;
+            state.messageBaselineSignature = messageSnapshotSignature(snapshot);
+            rememberMessageSnapshot(snapshot, true);
+            if (!snapshot.timeline) {
+              state.messageArmTimer = 0;
+              return;
+            }
+            // Discord hydrates the current channel and can then prepend cached
+            // history. Wait for a quiet baseline before treating appended IDs as
+            // live activity, so opening SideCord never replays old messages.
+            state.messageArmTimer = setTimeout(() => {
+              state.messageArmTimer = 0;
+              if (state.disposed) return;
+              const latest = collectMessageSnapshot();
+              const signature = messageSnapshotSignature(latest);
+              if (!latest.timeline || signature !== state.messageBaselineSignature) {
+                beginMessageBaseline(latest);
+                return;
+              }
+              rememberMessageSnapshot(latest, true);
+              state.messageTrackingArmed = true;
+            }, 2_000);
+          };
+          const scanMessageActivity = () => {
+            if (state.disposed) return;
+            const snapshot = collectMessageSnapshot();
+            const signature = messageSnapshotSignature(snapshot);
+
+            if (!state.messageTrackingArmed) {
+              if (signature !== state.messageBaselineSignature ||
+                  (!state.messageArmTimer && snapshot.timeline)) {
+                beginMessageBaseline(snapshot);
+              }
+              return;
+            }
+
+            if (!snapshot.timeline || snapshot.context !== state.messageContext) {
+              beginMessageBaseline(snapshot);
+              return;
+            }
+
+            const previousLastIndex = state.messageLastKey
+              ? snapshot.descriptors.findIndex(item => item.key === state.messageLastKey)
+              : -1;
+            const appendedKeys = new Set(
+              previousLastIndex >= 0
+                ? snapshot.descriptors
+                    .slice(previousLastIndex + 1)
+                    .map(item => item.key)
+                : []
+            );
+            const newActivity = snapshot.descriptors.filter(item =>
+              !state.messageKnownKeys.has(item.key) && (
+                appendedKeys.has(item.key) ||
+                !state.messageMaxSnowflake ||
+                compareSnowflakes(item.snowflake, state.messageMaxSnowflake) > 0
+              )
+            );
+
+            rememberMessageSnapshot(snapshot, false);
+            state.messageBaselineSignature = signature;
+            if (newActivity.length && timelineFallbackIsAllowed(newActivity)) {
+              reportMessageActivity();
+            }
+          };
+          const scheduleMessageScan = () => {
+            if (state.disposed || state.messageScanTimer) return;
+            state.messageScanTimer = setTimeout(() => {
+              state.messageScanTimer = 0;
+              scanMessageActivity();
+            }, 60);
+          };
           const trimmedLabel = value => String(value || "")
             .replace(/\\s+/g, " ")
             .trim()
@@ -541,7 +769,8 @@ enum DiscordCSSComposer {
             const previousComposer = state.roleElements["composer"] || null;
             const composer = resolveRole("composer", findComposer);
             scheduleRailReport(guildRail);
-            reportIncomingCallState(!!safeQuery(document, tokenSelector("ringingIncoming")));
+            scheduleMessageScan();
+            reportIncomingCallState(hasVisibleIncomingCall());
             bindAccountDockGeometry(channelList, accountDock);
 
             for (const composerRoot of new Set([previousComposer, composer])) {
@@ -750,24 +979,68 @@ enum DiscordCSSComposer {
           };
           const onColorSchemeChange = () => scheduleReconcile();
 
+          const elementNode = node => node?.nodeType === Node.ELEMENT_NODE
+            ? node
+            : node?.parentElement || null;
+          const mutationTouchesMessages = mutation => {
+            if (mutation.type === "attributes") {
+              const target = elementNode(mutation.target);
+              return (mutation.attributeName === "id" ||
+                  mutation.attributeName === "data-list-item-id") &&
+                !!target?.matches?.(messageSelector);
+            }
+            if (mutation.type !== "childList") return false;
+            return [...mutation.addedNodes, ...mutation.removedNodes].some(node => {
+              const element = elementNode(node);
+              return !!element && (
+                element.matches?.(messageTimelineSelector) ||
+                element.matches?.(messageSelector) ||
+                !!safeQuery(element, messageTimelineSelector) ||
+                !!safeQuery(element, messageSelector)
+              );
+            });
+          };
+          const mutationNeedsReconcile = mutation => {
+            const target = elementNode(mutation.target);
+            if (mutation.type === "attributes" &&
+                mutation.attributeName === "style") {
+              return !!target && (
+                target.matches?.(incomingCallSelector) ||
+                !!safeQuery(target, incomingCallSelector)
+              );
+            }
+            // Reactions, embeds, typing transitions, and message edits are hot
+            // DOM paths but cannot alter SideCord's roles, rail, or call state.
+            // New top-level messages are scanned separately through their
+            // added or removed message node.
+            return !target?.closest?.(messageSelector);
+          };
+
           document.addEventListener("click", onClick, false);
           document.addEventListener("pointerdown", onPointerDown, true);
           document.addEventListener("keydown", onKeyDown, true);
           state.mediaQuery.addEventListener("change", onColorSchemeChange);
 
-          state.observer = new MutationObserver(() => scheduleReconcile());
+          state.observer = new MutationObserver(mutations => {
+            if (mutations.some(mutationTouchesMessages)) scheduleMessageScan();
+            if (mutations.some(mutationNeedsReconcile)) scheduleReconcile();
+          });
           state.observer.observe(document, {
             childList: true,
             subtree: true,
             attributes: true,
             attributeFilter: [
               "aria-current",
+              "aria-hidden",
               "aria-label",
               "aria-selected",
               "class",
               "data-list-item-id",
               "data-theme",
-              "src"
+              "hidden",
+              "id",
+              "src",
+              "style"
             ]
           });
 
@@ -794,6 +1067,8 @@ enum DiscordCSSComposer {
             if (state.frameRequest) cancelAnimationFrame(state.frameRequest);
             if (state.fallbackTimer) clearTimeout(state.fallbackTimer);
             if (state.railReportTimer) clearTimeout(state.railReportTimer);
+            if (state.messageScanTimer) clearTimeout(state.messageScanTimer);
+            if (state.messageArmTimer) clearTimeout(state.messageArmTimer);
             state.observer.disconnect();
             state.dockResizeObserver.disconnect();
             state.mediaQuery.removeEventListener("change", onColorSchemeChange);
@@ -827,9 +1102,10 @@ enum DiscordCSSComposer {
         """
     }
 
-    /// Runs before Discord's application bundle so successful HTML5 desktop
-    /// notifications can become content-free native attention events. The
-    /// constructor arguments never leave the page.
+    /// Runs before Discord's application bundle so successful page notifications
+    /// and notifications exposed by service-worker registrations can become
+    /// content-free native attention events. Notification arguments never leave
+    /// the page.
     static func notificationBridgeUserScriptSource() -> String {
         let encodedMessageHandlerName = javascriptLiteral(
             messageHandlerName,
@@ -846,8 +1122,6 @@ enum DiscordCSSComposer {
 
           const bridgeKey = "\(notificationBridgeKey)";
           if (window[bridgeKey]) return;
-          const OriginalNotification = window.Notification;
-          if (typeof OriginalNotification !== "function") return;
 
           const messageHandlerName = \(encodedMessageHandlerName);
           const postNotificationEvent = () => {
@@ -858,25 +1132,96 @@ enum DiscordCSSComposer {
             } catch (_) {}
           };
 
-          let NotificationProxy;
-          NotificationProxy = new Proxy(OriginalNotification, {
-            construct(target, argumentsList, newTarget) {
-              const instance = Reflect.construct(target, argumentsList, newTarget);
-              postNotificationEvent();
-              return instance;
-            }
-          });
-
+          const bridge = {
+            originalNotification: null,
+            notificationProxy: null,
+            serviceWorkerNotificationsBaselined: false,
+            knownServiceWorkerNotificationsByScope: new Map(),
+            serviceWorkerPollTimer: 0
+          };
           try {
-            window.Notification = NotificationProxy;
-            if (window.Notification !== NotificationProxy) return;
             Object.defineProperty(window, bridgeKey, {
               configurable: false,
               enumerable: false,
               writable: false,
-              value: { original: OriginalNotification, proxy: NotificationProxy }
+              value: bridge
             });
-          } catch (_) {}
+          } catch (_) {
+            return;
+          }
+
+          const OriginalNotification = window.Notification;
+          if (typeof OriginalNotification === "function") {
+            const NotificationProxy = new Proxy(OriginalNotification, {
+              construct(target, argumentsList, newTarget) {
+                const instance = Reflect.construct(target, argumentsList, newTarget);
+                postNotificationEvent();
+                return instance;
+              }
+            });
+            try {
+              window.Notification = NotificationProxy;
+              if (window.Notification === NotificationProxy) {
+                bridge.originalNotification = OriginalNotification;
+                bridge.notificationProxy = NotificationProxy;
+              }
+            } catch (_) {}
+          }
+
+          const serviceWorkerNotificationKey = (notification, index) => {
+            const tag = typeof notification?.tag === "string" ? notification.tag : "";
+            const timestampValue = Number(notification?.timestamp);
+            const timestamp = Number.isFinite(timestampValue) ? timestampValue : 0;
+            if (tag || timestamp) return `${tag}:${timestamp}`;
+            return `anonymous:${index}`;
+          };
+          const scheduleServiceWorkerPoll = () => {
+            if (bridge.serviceWorkerPollTimer) return;
+            bridge.serviceWorkerPollTimer = setTimeout(() => {
+              bridge.serviceWorkerPollTimer = 0;
+              pollServiceWorkerNotifications();
+            }, 1_000);
+          };
+          const pollServiceWorkerNotifications = async () => {
+            try {
+              const getRegistrations = navigator.serviceWorker?.getRegistrations;
+              if (typeof getRegistrations !== "function") return;
+              const registrations = await getRegistrations.call(navigator.serviceWorker);
+              const groups = await Promise.all(registrations.map(registration => {
+                if (typeof registration?.getNotifications !== "function") return [];
+                return Promise.resolve(registration.getNotifications()).catch(() => []);
+              }));
+              const previousByScope = bridge.knownServiceWorkerNotificationsByScope;
+              const nextByScope = new Map();
+              let hasNewNotification = false;
+              groups.forEach((notifications, registrationIndex) => {
+                const registration = registrations[registrationIndex];
+                const scope = typeof registration?.scope === "string" && registration.scope
+                  ? registration.scope
+                  : `registration:${registrationIndex}`;
+                const keys = new Set();
+                notifications.forEach((notification, index) => {
+                  keys.add(serviceWorkerNotificationKey(notification, index));
+                });
+                const previousKeys = previousByScope.get(scope);
+                if (previousKeys && [...keys].some(key => !previousKeys.has(key))) {
+                  hasNewNotification = true;
+                }
+                // A newly discovered registration receives its own quiet
+                // baseline, so worker startup and registration reordering never
+                // replay notifications that were already present.
+                nextByScope.set(scope, keys);
+              });
+              bridge.knownServiceWorkerNotificationsByScope = nextByScope;
+              bridge.serviceWorkerNotificationsBaselined = true;
+              if (hasNewNotification) postNotificationEvent();
+            } catch (_) {
+            } finally {
+              scheduleServiceWorkerPoll();
+            }
+          };
+
+          pollServiceWorkerNotifications();
         })();
         """
     }

@@ -3,8 +3,60 @@ import SwiftUI
 
 @MainActor
 enum ApplicationMenuFactory {
-    static func make() -> NSMenu {
+    static func make(
+        appName: String = applicationName,
+        settingsTarget: AnyObject? = nil
+    ) -> NSMenu {
         let mainMenu = NSMenu(title: "Main")
+
+        let applicationMenuItem = NSMenuItem(
+            title: appName,
+            action: nil,
+            keyEquivalent: ""
+        )
+        let applicationMenu = NSMenu(title: appName)
+        applicationMenu.addItem(command(
+            "About \(appName)",
+            action: "orderFrontStandardAboutPanel:"
+        ))
+        applicationMenu.addItem(.separator())
+        let settingsItem = command(
+            "Settings…",
+            action: "showSettings:",
+            key: ","
+        )
+        settingsItem.target = settingsTarget
+        applicationMenu.addItem(settingsItem)
+        applicationMenu.addItem(.separator())
+
+        let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
+        servicesItem.submenu = NSMenu(title: "Services")
+        applicationMenu.addItem(servicesItem)
+        applicationMenu.addItem(.separator())
+        applicationMenu.addItem(command(
+            "Hide \(appName)",
+            action: "hide:",
+            key: "h"
+        ))
+        applicationMenu.addItem(command(
+            "Hide Others",
+            action: "hideOtherApplications:",
+            key: "h",
+            modifiers: [.command, .option]
+        ))
+        applicationMenu.addItem(command(
+            "Show All",
+            action: "unhideAllApplications:"
+        ))
+        applicationMenu.addItem(.separator())
+        applicationMenu.addItem(command(
+            "Quit \(appName)",
+            action: "terminate:",
+            key: "q"
+        ))
+        applicationMenuItem.submenu = applicationMenu
+        mainMenu.addItem(applicationMenuItem)
+
         let editMenuItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
         let editMenu = NSMenu(title: "Edit")
 
@@ -30,13 +82,37 @@ enum ApplicationMenuFactory {
 
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
+
+        let windowMenuItem = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(command("Close", action: "performClose:", key: "w"))
+        windowMenu.addItem(command("Minimize", action: "performMiniaturize:", key: "m"))
+        windowMenuItem.submenu = windowMenu
+        mainMenu.addItem(windowMenuItem)
+
         return mainMenu
+    }
+
+    static func connectSystemMenus(in mainMenu: NSMenu, to application: NSApplication) {
+        application.servicesMenu = mainMenu.items.first?
+            .submenu?
+            .items
+            .first { $0.title == "Services" }?
+            .submenu
+        application.windowsMenu = mainMenu.items
+            .first { $0.submenu?.title == "Window" }?
+            .submenu
+    }
+
+    private static var applicationName: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? ProcessInfo.processInfo.processName
     }
 
     private static func command(
         _ title: String,
         action: String,
-        key: String,
+        key: String = "",
         modifiers: NSEvent.ModifierFlags = [.command]
     ) -> NSMenuItem {
         let item = NSMenuItem(
@@ -44,7 +120,7 @@ enum ApplicationMenuFactory {
             action: Selector((action)),
             keyEquivalent: key
         )
-        item.keyEquivalentModifierMask = modifiers
+        item.keyEquivalentModifierMask = key.isEmpty ? [] : modifiers
         item.target = nil
         return item
     }
@@ -73,7 +149,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let onboardingCompletedKey = "onboarding.completed"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.mainMenu = ApplicationMenuFactory.make()
+        let mainMenu = ApplicationMenuFactory.make(settingsTarget: self)
+        NSApp.mainMenu = mainMenu
+        ApplicationMenuFactory.connectSystemMenus(in: mainMenu, to: NSApp)
         NSApp.setActivationPolicy(.accessory)
 
         synchronizeLaunchAtLoginState()
@@ -131,7 +209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             webController: webController,
             panelController: panelController,
             onOpenSettings: { [weak self] in
-                self?.showSettings()
+                self?.showSettings(nil)
             }
         )
         panelController.setContentView(NSHostingView(rootView: rootView))
@@ -224,7 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(actionItem(title: "Reload Discord", action: #selector(reloadDiscord)))
 
         menu.addItem(.separator())
-        menu.addItem(actionItem(title: "Settings…", action: #selector(showSettings)))
+        menu.addItem(actionItem(title: "Settings…", action: #selector(showSettings(_:))))
         menu.addItem(actionItem(title: "Welcome to SideCord…", action: #selector(showOnboarding)))
         menu.addItem(.separator())
         menu.addItem(actionItem(title: "Quit SideCord", action: #selector(quit)))
@@ -259,7 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         webController.reload()
     }
 
-    @objc private func showSettings() {
+    @objc private func showSettings(_ sender: Any?) {
         if settingsWindowController == nil {
             let settingsView = SettingsView(
                 settings: settings,
@@ -285,6 +363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             window.setContentSize(NSSize(width: 980, height: 720))
             window.contentMinSize = NSSize(width: 820, height: 620)
             window.isReleasedWhenClosed = false
+            window.collectionBehavior.insert(.moveToActiveSpace)
             window.center()
             settingsWindowController = NSWindowController(window: window)
         }
@@ -293,25 +372,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func showOnboarding() {
-        if onboardingWindowController == nil {
-            let onboardingView = OnboardingView(
-                settings: settings,
-                launchAtLoginController: launchAtLoginController,
-                onFinish: { [weak self] in
-                    guard let self else { return }
-                    UserDefaults.standard.set(true, forKey: self.onboardingCompletedKey)
-                    self.onboardingWindowController?.close()
-                    self.panelController.reveal(activate: true)
-                }
-            )
-            let hostingController = NSHostingController(rootView: onboardingView)
-            let window = NSWindow(contentViewController: hostingController)
-            window.title = "Welcome to SideCord"
-            window.styleMask = [.titled, .closable]
-            window.isReleasedWhenClosed = false
-            window.center()
-            onboardingWindowController = NSWindowController(window: window)
+        if onboardingWindowController?.window?.isVisible == true {
+            activate(windowController: onboardingWindowController)
+            return
         }
+
+        launchAtLoginController.refresh()
+        let onboardingView = OnboardingView(
+            settings: settings,
+            launchAtLoginController: launchAtLoginController,
+            onPreviewGlow: { [weak self] edge, accent in
+                self?.panelController.previewNotificationGlow(edge: edge, accent: accent)
+            },
+            onFinish: { [weak self] in
+                guard let self else { return }
+                UserDefaults.standard.set(true, forKey: self.onboardingCompletedKey)
+                self.onboardingWindowController?.close()
+                self.panelController.reveal(activate: true)
+            }
+        )
+        let hostingController = NSHostingController(rootView: onboardingView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Welcome to SideCord"
+        window.styleMask = [.titled, .closable]
+        window.collectionBehavior.insert(.moveToActiveSpace)
+        window.isReleasedWhenClosed = false
+        window.center()
+        onboardingWindowController = NSWindowController(window: window)
 
         activate(windowController: onboardingWindowController)
     }
