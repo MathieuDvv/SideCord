@@ -11,9 +11,11 @@ final class AppSettings: ObservableObject {
     static let sidebarInsetRange: ClosedRange<CGFloat> = 0 ... 48
     static let defaultHoverDwellDelay: TimeInterval = 0.25
     static let defaultRetractionDelay: TimeInterval = 0.7
+    static let defaultThemeIntensity = 1.0
 
     private static let hoverDwellRange: ClosedRange<TimeInterval> = 0 ... 2
     private static let retractionRange: ClosedRange<TimeInterval> = 0 ... 10
+    private static let themeIntensityRange = 0.0 ... 1.0
 
     @Published var sidebarEdge: SidebarEdge {
         didSet { defaults.set(sidebarEdge.rawValue, forKey: Keys.sidebarEdge) }
@@ -95,6 +97,34 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    @Published var floatingRailEnabled: Bool {
+        didSet { defaults.set(floatingRailEnabled, forKey: Keys.floatingRailEnabled) }
+    }
+
+    @Published var visualTheme: DiscordVisualTheme {
+        didSet { defaults.set(visualTheme.rawValue, forKey: Keys.visualTheme) }
+    }
+
+    @Published var themeAccent: SideCordAccent {
+        didSet { defaults.set(themeAccent.rawValue, forKey: Keys.themeAccent) }
+    }
+
+    @Published var themeIntensity: Double {
+        didSet {
+            let validated = Self.validatedThemeIntensity(themeIntensity)
+            guard validated == themeIntensity else {
+                themeIntensity = validated
+                defaults.set(validated, forKey: Keys.themeIntensity)
+                return
+            }
+            defaults.set(validated, forKey: Keys.themeIntensity)
+        }
+    }
+
+    @Published var themeColorScheme: ThemeColorScheme {
+        didSet { defaults.set(themeColorScheme.rawValue, forKey: Keys.themeColorScheme) }
+    }
+
     @Published var customCSS: String {
         didSet { defaults.set(customCSS, forKey: Keys.customCSS) }
     }
@@ -115,6 +145,23 @@ final class AppSettings: ObservableObject {
             }
             defaults.set(Int(shortcut.keyCode), forKey: Keys.shortcutKeyCode)
             defaults.set(Int(shortcut.modifiers), forKey: Keys.shortcutModifiers)
+        }
+    }
+
+    @Published var navigationShortcut: ShortcutDefinition {
+        didSet {
+            guard navigationShortcut.isValid else {
+                navigationShortcut = oldValue.isValid ? oldValue : .optionShiftD
+                return
+            }
+            defaults.set(
+                Int(navigationShortcut.keyCode),
+                forKey: Keys.navigationShortcutKeyCode
+            )
+            defaults.set(
+                Int(navigationShortcut.modifiers),
+                forKey: Keys.navigationShortcutModifiers
+            )
         }
     }
 
@@ -166,6 +213,26 @@ final class AppSettings: ObservableObject {
             ? .full
             : storedLayoutMode
         customDiscordLayoutOptions = storedCustomLayoutOptions ?? .full
+        floatingRailEnabled = Self.bool(
+            forKey: Keys.floatingRailEnabled,
+            in: defaults,
+            defaultValue: true
+        )
+        if let storedTheme = defaults.string(forKey: Keys.visualTheme) {
+            visualTheme = DiscordVisualTheme(rawValue: storedTheme) ?? .systemGlass
+        } else {
+            visualTheme = defaults.bool(forKey: OnboardingKeys.completed)
+                ? .discord
+                : .systemGlass
+        }
+        themeAccent = defaults.string(forKey: Keys.themeAccent)
+            .flatMap(SideCordAccent.init(rawValue:)) ?? .automatic
+        themeIntensity = Self.validatedThemeIntensity(
+            Self.double(forKey: Keys.themeIntensity, in: defaults)
+                ?? Self.defaultThemeIntensity
+        )
+        themeColorScheme = defaults.string(forKey: Keys.themeColorScheme)
+            .flatMap(ThemeColorScheme.init(rawValue:)) ?? .system
         customCSS = defaults.string(forKey: Keys.customCSS) ?? ""
         customCSSEnabled = Self.bool(
             forKey: Keys.customCSSEnabled,
@@ -178,15 +245,22 @@ final class AppSettings: ObservableObject {
             defaultValue: false
         )
 
-        let storedShortcut = ShortcutDefinition(
-            keyCode: UInt32(clamping: defaults.integer(forKey: Keys.shortcutKeyCode)),
-            modifiers: UInt32(clamping: defaults.integer(forKey: Keys.shortcutModifiers))
+        let storedSidebarShortcut = Self.loadShortcut(
+            from: defaults,
+            keyCodeKey: Keys.shortcutKeyCode,
+            modifiersKey: Keys.shortcutModifiers,
+            fallback: .optionD
         )
-        shortcut = defaults.object(forKey: Keys.shortcutKeyCode) != nil
-            && defaults.object(forKey: Keys.shortcutModifiers) != nil
-            && storedShortcut.isValid
-            ? storedShortcut
-            : .optionD
+        shortcut = storedSidebarShortcut
+        let storedNavigationShortcut = Self.loadShortcut(
+            from: defaults,
+            keyCodeKey: Keys.navigationShortcutKeyCode,
+            modifiersKey: Keys.navigationShortcutModifiers,
+            fallback: .optionShiftD
+        )
+        navigationShortcut = storedNavigationShortcut == storedSidebarShortcut
+            ? (storedSidebarShortcut == .optionShiftD ? .optionD : .optionShiftD)
+            : storedNavigationShortcut
 
         isPinned = Self.bool(
             forKey: Keys.isPinned,
@@ -194,6 +268,43 @@ final class AppSettings: ObservableObject {
             defaultValue: false
         )
         displayWidths = Self.loadDisplayWidths(from: defaults)
+
+        // Repair normalized values on load so a corrupt preference does not
+        // repeatedly fall through to a different in-memory value every launch.
+        defaults.set(sidebarEdge.rawValue, forKey: Keys.sidebarEdge)
+        defaults.set(hoverDwellDelay, forKey: Keys.hoverDwellDelay)
+        defaults.set(retractionDelay, forKey: Keys.retractionDelay)
+        defaults.set(Double(sidebarWidth), forKey: Keys.sidebarWidth)
+        defaults.set(Double(sidebarInset), forKey: Keys.sidebarInset)
+        defaults.set(cssPreset.rawValue, forKey: Keys.cssPreset)
+        defaults.set(discordLayoutMode.rawValue, forKey: Keys.discordLayoutMode)
+        defaults.set(floatingRailEnabled, forKey: Keys.floatingRailEnabled)
+        defaults.set(visualTheme.rawValue, forKey: Keys.visualTheme)
+        defaults.set(themeAccent.rawValue, forKey: Keys.themeAccent)
+        defaults.set(themeIntensity, forKey: Keys.themeIntensity)
+        defaults.set(themeColorScheme.rawValue, forKey: Keys.themeColorScheme)
+        Self.persist(
+            shortcut,
+            keyCodeKey: Keys.shortcutKeyCode,
+            modifiersKey: Keys.shortcutModifiers,
+            in: defaults
+        )
+        Self.persist(
+            navigationShortcut,
+            keyCodeKey: Keys.navigationShortcutKeyCode,
+            modifiersKey: Keys.navigationShortcutModifiers,
+            in: defaults
+        )
+        if storedLayoutMode == .custom, storedCustomLayoutOptions == nil {
+            defaults.set(DiscordLayoutMode.full.rawValue, forKey: Keys.discordLayoutMode)
+            if let repairedData = try? JSONEncoder().encode(DiscordLayoutOptions.full) {
+                defaults.set(repairedData, forKey: Keys.customDiscordLayoutOptions)
+            }
+        }
+        if let storedCustomLayoutOptions,
+           let migratedData = try? JSONEncoder().encode(storedCustomLayoutOptions) {
+            defaults.set(migratedData, forKey: Keys.customDiscordLayoutOptions)
+        }
     }
 
     func width(forDisplay displayID: String) -> CGFloat {
@@ -249,10 +360,16 @@ final class AppSettings: ObservableObject {
         cssPreset = .compact
         discordLayoutMode = .full
         customDiscordLayoutOptions = .full
+        floatingRailEnabled = true
+        visualTheme = .systemGlass
+        themeAccent = .automatic
+        themeIntensity = Self.defaultThemeIntensity
+        themeColorScheme = .system
         customCSS = ""
         customCSSEnabled = false
         launchAtLoginEnabled = false
         shortcut = .optionD
+        navigationShortcut = .optionShiftD
         isPinned = false
         resetAllDisplayWidths()
     }
@@ -289,6 +406,14 @@ final class AppSettings: ObservableObject {
         return min(max(inset, sidebarInsetRange.lowerBound), sidebarInsetRange.upperBound)
     }
 
+    private static func validatedThemeIntensity(_ intensity: Double) -> Double {
+        guard intensity.isFinite else { return defaultThemeIntensity }
+        return min(
+            max(intensity, themeIntensityRange.lowerBound),
+            themeIntensityRange.upperBound
+        )
+    }
+
     private static func validatedDelay(
         _ delay: TimeInterval,
         defaultValue: TimeInterval,
@@ -308,8 +433,37 @@ final class AppSettings: ObservableObject {
     }
 
     private static func double(forKey key: String, in defaults: UserDefaults) -> Double? {
-        guard defaults.object(forKey: key) != nil else { return nil }
-        return defaults.double(forKey: key)
+        guard let number = defaults.object(forKey: key) as? NSNumber else { return nil }
+        return number.doubleValue
+    }
+
+    private static func loadShortcut(
+        from defaults: UserDefaults,
+        keyCodeKey: String,
+        modifiersKey: String,
+        fallback: ShortcutDefinition
+    ) -> ShortcutDefinition {
+        guard let keyCodeNumber = defaults.object(forKey: keyCodeKey) as? NSNumber,
+              let modifiersNumber = defaults.object(forKey: modifiersKey) as? NSNumber,
+              (0 ... Int64(UInt8.max)).contains(keyCodeNumber.int64Value),
+              (0 ... Int64(UInt32.max)).contains(modifiersNumber.int64Value)
+        else { return fallback }
+
+        let stored = ShortcutDefinition(
+            keyCode: UInt32(keyCodeNumber.int64Value),
+            modifiers: UInt32(modifiersNumber.int64Value)
+        )
+        return stored.isValid ? stored : fallback
+    }
+
+    private static func persist(
+        _ shortcut: ShortcutDefinition,
+        keyCodeKey: String,
+        modifiersKey: String,
+        in defaults: UserDefaults
+    ) {
+        defaults.set(Int(shortcut.keyCode), forKey: keyCodeKey)
+        defaults.set(Int(shortcut.modifiers), forKey: modifiersKey)
     }
 
     private enum Keys {
@@ -323,11 +477,22 @@ final class AppSettings: ObservableObject {
         static let cssPreset = "settings.cssPreset"
         static let discordLayoutMode = "settings.discordLayoutMode"
         static let customDiscordLayoutOptions = "settings.customDiscordLayoutOptions"
+        static let floatingRailEnabled = "settings.floatingRailEnabled"
+        static let visualTheme = "settings.visualTheme"
+        static let themeAccent = "settings.themeAccent"
+        static let themeIntensity = "settings.themeIntensity"
+        static let themeColorScheme = "settings.themeColorScheme"
         static let customCSS = "settings.customCSS"
         static let customCSSEnabled = "settings.customCSSEnabled"
         static let launchAtLoginEnabled = "settings.launchAtLoginEnabled"
         static let shortcutKeyCode = "settings.shortcut.keyCode"
         static let shortcutModifiers = "settings.shortcut.modifiers"
+        static let navigationShortcutKeyCode = "settings.navigationShortcut.keyCode"
+        static let navigationShortcutModifiers = "settings.navigationShortcut.modifiers"
         static let isPinned = "settings.isPinned"
+    }
+
+    private enum OnboardingKeys {
+        static let completed = "onboarding.completed"
     }
 }

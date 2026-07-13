@@ -30,6 +30,69 @@ final class PanelGeometryTests: XCTestCase {
         XCTAssertEqual(PanelGeometry.constrainedWidth(2_000, in: usable), 800)
     }
 
+    func testRailSitsLeftOfRightEdgeSidebarTowardScreenCenter() throws {
+        let usable = NSRect(x: 0, y: 40, width: 1_440, height: 860)
+        let sidebar = PanelGeometry.sidebarFrame(
+            in: usable,
+            edge: .right,
+            requestedWidth: 420,
+            inset: 16
+        )
+        let rail = try XCTUnwrap(PanelGeometry.railFrame(
+            adjacentTo: sidebar,
+            in: usable,
+            edge: .right
+        ))
+
+        XCTAssertEqual(sidebar, NSRect(x: 1_004, y: 56, width: 420, height: 828))
+        XCTAssertEqual(rail, NSRect(x: 916, y: 68, width: 76, height: 804))
+        XCTAssertEqual(sidebar.minX - rail.maxX, PanelGeometry.railGap)
+    }
+
+    func testRailSitsRightOfLeftEdgeSidebarTowardScreenCenter() throws {
+        let usable = NSRect(x: -1_920, y: 0, width: 1_920, height: 1_080)
+        let sidebar = PanelGeometry.sidebarFrame(
+            in: usable,
+            edge: .left,
+            requestedWidth: 500,
+            inset: 16
+        )
+        let rail = try XCTUnwrap(PanelGeometry.railFrame(
+            adjacentTo: sidebar,
+            in: usable,
+            edge: .left
+        ))
+
+        XCTAssertEqual(sidebar, NSRect(x: -1_904, y: 16, width: 500, height: 1_048))
+        XCTAssertEqual(rail, NSRect(x: -1_392, y: 28, width: 76, height: 1_024))
+        XCTAssertEqual(rail.minX - sidebar.maxX, PanelGeometry.railGap)
+    }
+
+    func testRailNarrowsWithoutOverlappingSidebarOnSmallDisplay() throws {
+        let usable = NSRect(x: 0, y: 0, width: 360, height: 400)
+        let sidebar = NSRect(x: 72, y: 0, width: 288, height: 400)
+        let rail = try XCTUnwrap(PanelGeometry.railFrame(
+            adjacentTo: sidebar,
+            in: usable,
+            edge: .right,
+            requestedWidth: 76,
+            gap: 12
+        ))
+
+        XCTAssertEqual(rail, NSRect(x: 0, y: 12, width: 60, height: 376))
+        XCTAssertEqual(sidebar.minX - rail.maxX, 12)
+    }
+
+    func testRailIsUnavailableWhenSidebarConsumesTheUsableFrame() {
+        let usable = NSRect(x: 0, y: 0, width: 1_000, height: 700)
+
+        XCTAssertNil(PanelGeometry.railFrame(
+            adjacentTo: usable,
+            in: usable,
+            edge: .right
+        ))
+    }
+
     func testFloatingInsetMovesAndShortensRightSidebar() {
         let usable = NSRect(x: 0, y: 40, width: 1_440, height: 860)
         let frame = PanelGeometry.sidebarFrame(

@@ -6,14 +6,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settings = AppSettings()
     private lazy var launchAtLoginController = LaunchAtLoginController()
     private lazy var webController = DiscordWebController(settings: settings)
-    private lazy var panelController = PanelController(settings: settings)
-    private lazy var shortcutManager = GlobalShortcutManager()
+    private lazy var panelController = PanelController(
+        settings: settings,
+        webController: webController,
+        railModel: webController.railModel
+    )
+    private lazy var shortcutManager = GlobalShortcutManager(identifier: 1)
+    private lazy var navigationShortcutManager = GlobalShortcutManager(identifier: 2)
 
     private var statusItem: NSStatusItem?
     private var statusMenu: NSMenu?
     private var settingsWindowController: NSWindowController?
     private var onboardingWindowController: NSWindowController?
     private var shortcutError: Error?
+    private var navigationShortcutError: Error?
 
     private let onboardingCompletedKey = "onboarding.completed"
 
@@ -28,6 +34,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } catch {
             shortcutError = error
         }
+        do {
+            try registerNavigationShortcut(settings.navigationShortcut)
+        } catch {
+            navigationShortcutError = error
+        }
         panelController.start()
 
         if !UserDefaults.standard.bool(forKey: onboardingCompletedKey) {
@@ -39,7 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         panelController.stop()
+        webController.shutdown()
         shortcutManager.shutdown()
+        navigationShortcutManager.shutdown()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -116,6 +129,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item)
         }
 
+        let navigationShortcutItem = NSMenuItem(
+            title: "Navigation: \(settings.navigationShortcut.displayName)",
+            action: nil,
+            keyEquivalent: ""
+        )
+        navigationShortcutItem.isEnabled = false
+        menu.addItem(navigationShortcutItem)
+
+        if let navigationShortcutError {
+            let item = NSMenuItem(
+                title: navigationShortcutError.localizedDescription,
+                action: nil,
+                keyEquivalent: ""
+            )
+            item.isEnabled = false
+            menu.addItem(item)
+        }
+
         menu.addItem(.separator())
 
         let pinItem = actionItem(
@@ -124,6 +155,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         pinItem.state = settings.isPinned ? .on : .off
         menu.addItem(pinItem)
+
+        let railItem = actionItem(
+            title: "Floating Server Rail",
+            action: #selector(toggleFloatingRail)
+        )
+        railItem.state = settings.floatingRailEnabled ? .on : .off
+        railItem.isEnabled = settings.discordLayoutOptions.navigationPresentation != .docked
+        menu.addItem(railItem)
 
         menu.addItem(actionItem(
             title: panelController.isMaximized ? "Restore Sidebar" : "Maximize Sidebar",
@@ -155,6 +194,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @objc private func toggleFloatingRail() {
+        settings.floatingRailEnabled.toggle()
+    }
+
     @objc private func toggleMaximize() {
         panelController.toggleMaximize()
     }
@@ -172,12 +215,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 onShortcutChanged: { [weak self] shortcut in
                     guard let self else { return }
                     try self.registerShortcut(shortcut)
+                },
+                onNavigationShortcutChanged: { [weak self] shortcut in
+                    guard let self else { return }
+                    try self.registerNavigationShortcut(shortcut)
+                },
+                onShortcutsReset: { [weak self] in
+                    guard let self else { return }
+                    try self.resetShortcutsToDefaults()
                 }
             )
             let hostingController = NSHostingController(rootView: settingsView)
             let window = NSWindow(contentViewController: hostingController)
             window.title = "SideCord Settings"
-            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.setContentSize(NSSize(width: 980, height: 720))
+            window.contentMinSize = NSSize(width: 820, height: 620)
             window.isReleasedWhenClosed = false
             window.center()
             settingsWindowController = NSWindowController(window: window)
@@ -236,5 +289,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             shortcutError = error
             throw error
         }
+    }
+
+    private func registerNavigationShortcut(_ shortcut: ShortcutDefinition) throws {
+        do {
+            try navigationShortcutManager.register(shortcut) { [weak self] in
+                guard let self else { return }
+                if self.panelController.isVisible {
+                    self.webController.toggleNavigationDrawer()
+                } else {
+                    self.webController.openNavigationDrawer()
+                    self.panelController.reveal(activate: true)
+                }
+            }
+            navigationShortcutError = nil
+        } catch {
+            navigationShortcutError = error
+            throw error
+        }
+    }
+
+    private func resetShortcutsToDefaults() throws {
+        let previousSidebarShortcut = shortcutManager.registeredShortcut
+        let previousNavigationShortcut = navigationShortcutManager.registeredShortcut
+
+        shortcutManager.unregister()
+        navigationShortcutManager.unregister()
+
+        do {
+            try registerShortcut(.optionD)
+            try registerNavigationShortcut(.optionShiftD)
+        } catch let resetError {
+            shortcutManager.unregister()
+            navigationShortcutManager.unregister()
+
+            do {
+                if let previousSidebarShortcut {
+                    try registerShortcut(previousSidebarShortcut)
+                }
+                if let previousNavigationShortcut {
+                    try registerNavigationShortcut(previousNavigationShortcut)
+                }
+            } catch let recoveryError {
+                throw ShortcutPairResetError(
+                    resetError: resetError,
+                    recoveryError: recoveryError
+                )
+            }
+            throw resetError
+        }
+    }
+}
+
+private struct ShortcutPairResetError: LocalizedError {
+    let resetError: Error
+    let recoveryError: Error
+
+    var errorDescription: String? {
+        "SideCord could not reset the shortcuts (\(resetError.localizedDescription)) or restore the previous pair (\(recoveryError.localizedDescription)). Choose new shortcuts or restart SideCord."
     }
 }

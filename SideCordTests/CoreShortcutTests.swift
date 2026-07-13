@@ -8,6 +8,14 @@ final class CoreShortcutTests: XCTestCase {
         XCTAssertEqual(ShortcutDefinition.optionD.modifiers, UInt32(optionKey))
         XCTAssertEqual(ShortcutDefinition.optionD.displayName, "⌥D")
         XCTAssertTrue(ShortcutDefinition.optionD.isValid)
+
+        XCTAssertEqual(ShortcutDefinition.optionShiftD.keyCode, UInt32(kVK_ANSI_D))
+        XCTAssertEqual(
+            ShortcutDefinition.optionShiftD.modifiers,
+            UInt32(optionKey | shiftKey)
+        )
+        XCTAssertEqual(ShortcutDefinition.optionShiftD.displayName, "⌥⇧D")
+        XCTAssertTrue(ShortcutDefinition.optionShiftD.isValid)
     }
 
     func testShortcutRequiresOnlySupportedModifiers() {

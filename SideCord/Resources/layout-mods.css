@@ -1,34 +1,102 @@
-/* SideCord layout modifiers. Each rule is scoped to a class managed on <html>.
-   Semantic/data selectors are fallbacks for Discord CSS-module name changes. */
+/* SideCord layout behavior. JavaScript only tags Discord's live nodes; it never
+   clones, moves, or replaces them, so Discord owns every interaction and menu. */
 
-html[data-sidecord-hide-servers] {
+html[data-sidecord-navigation="floating"],
+html[data-sidecord-navigation="hidden"] {
   --custom-guild-list-width: 0px;
-}
-
-html[data-sidecord-hide-servers] :where(
-  [class^="guilds_"],
-  [class*=" guilds_"],
-  nav:has([data-list-id="guildsnav"]),
-  nav[aria-label*="Servers" i]
-) {
-  display: none !important;
-}
-
-html[data-sidecord-hide-channels] {
   --custom-channel-sidebar-width: 0px;
 }
 
-html[data-sidecord-hide-channels] :where(
+html[data-sidecord-navigation="hidden"] :where(
+  [data-sidecord-role="guild-rail"],
+  [data-sidecord-role="channel-list"],
+  [data-sidecord-role="account-dock"],
+  [class^="guilds_"],
+  [class*=" guilds_"],
   [class^="sidebarList_"],
   [class*=" sidebarList_"],
-  [class^="sidebar_"]:has([data-list-id^="channels"]),
-  [class*=" sidebar_"]:has([data-list-id^="channels"]),
-  [class^="sidebar_"]:has([data-list-id^="private-channels"]),
-  [class*=" sidebar_"]:has([data-list-id^="private-channels"]),
-  nav[aria-label*="Channels" i],
-  nav[aria-label*="Direct Messages" i]
+  nav:has([data-list-id="guildsnav"])
 ) {
   display: none !important;
+}
+
+/* Floating navigation is rendered natively from a metadata bridge. Discord's
+   original rail stays live in the DOM for selection, unread state, and clicks. */
+html[data-sidecord-navigation="floating"] :where(
+  [data-sidecord-role="guild-rail"],
+  [class^="guilds_"],
+  [class*=" guilds_"],
+  nav:has([data-list-id="guildsnav"])
+) {
+  display: none !important;
+}
+
+html[data-sidecord-navigation="floating"] [data-sidecord-role="channel-list"],
+html[data-sidecord-navigation="floating"] [data-sidecord-role="account-dock"] {
+  box-sizing: border-box !important;
+  position: fixed !important;
+  z-index: 2147482999 !important;
+  left: 12px !important;
+  width: min(286px, calc(100vw - 24px)) !important;
+  min-width: 0 !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transform: translateX(calc(-100% - 24px)) !important;
+  transition:
+    transform 180ms cubic-bezier(.2, .8, .2, 1),
+    opacity 130ms ease,
+    visibility 0s linear 180ms !important;
+}
+
+html[data-sidecord-navigation="floating"] [data-sidecord-role="channel-list"] {
+  top: 12px !important;
+  bottom: calc(var(--sidecord-account-dock-height, 0px) + 24px) !important;
+  height: auto !important;
+  border-radius: 18px !important;
+  background-color: color-mix(
+    in srgb,
+    var(--background-secondary, #2b2d31) 96%,
+    transparent
+  ) !important;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 34%) !important;
+  backdrop-filter: blur(22px) saturate(1.16) !important;
+  overflow: hidden !important;
+}
+
+html[data-sidecord-navigation="floating"] [data-sidecord-role="account-dock"] {
+  bottom: 12px !important;
+}
+
+html[data-sidecord-navigation="floating"][data-sidecord-drawer-open]
+[data-sidecord-role="channel-list"],
+html[data-sidecord-navigation="floating"][data-sidecord-drawer-open]
+[data-sidecord-role="account-dock"] {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  transform: translateX(0) !important;
+  transition-delay: 0s !important;
+}
+
+/* Some Discord builds keep the account dock inside the channel list. In that
+   shape it follows the parent drawer instead of receiving a second transform. */
+html[data-sidecord-navigation="floating"]
+[data-sidecord-role="channel-list"] [data-sidecord-role="account-dock"] {
+  position: relative !important;
+  z-index: 1 !important;
+  inset: auto !important;
+  width: auto !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+html[data-sidecord-navigation="floating"]
+[data-sidecord-role="channel-list"]:has([data-sidecord-role="account-dock"]) {
+  bottom: 12px !important;
 }
 
 html[data-sidecord-hide-members] {
@@ -46,6 +114,7 @@ html[data-sidecord-hide-members] :where(
 }
 
 html[data-sidecord-hide-account-dock] :where(
+  [data-sidecord-role="account-dock"],
   [class^="panels_"],
   [class*=" panels_"]
 ) {
@@ -66,19 +135,30 @@ html[data-sidecord-simplify-header]
   display: none !important;
 }
 
-html[data-sidecord-simplify-composer]
-:where([class^="channelTextArea_"], [class*=" channelTextArea_"])
-:where([class^="buttons_"], [class*=" buttons_"]),
-html[data-sidecord-simplify-composer] :where(
-  [class^="channelAppLauncher_"],
-  [class*=" channelAppLauncher_"]
+/* Essential mode is deliberately targeted and fail-open. Attachment, GIF, and
+   emoji controls are never selected by these rules and remain Discord-native. */
+html[data-sidecord-composer="essential"] :where(
+  [data-sidecord-composer-extra="gift"],
+  [data-sidecord-composer-extra="sticker"],
+  [data-sidecord-composer-extra="apps"],
+  [data-sidecord-role="composer"] [data-list-item-id*="gift" i],
+  [data-sidecord-role="composer"] [data-list-item-id*="sticker" i],
+  [data-sidecord-role="composer"] [data-mana-component*="gift" i],
+  [data-sidecord-role="composer"] [data-mana-component*="sticker" i],
+  [data-sidecord-role="composer"] button[aria-label*="gift" i],
+  [data-sidecord-role="composer"] button[aria-label*="sticker" i],
+  [data-sidecord-role="composer"] [class^="channelAppLauncher_"],
+  [data-sidecord-role="composer"] [class*=" channelAppLauncher_"]
 ) {
   display: none !important;
 }
 
-html[data-sidecord-hide-composer]
-:where(form, [class^="form_"], [class*=" form_"])
-:has(:where([class^="channelTextArea_"], [class*=" channelTextArea_"])) {
+html[data-sidecord-composer="hidden"]
+:where(form, [class^="form_"], [class*=" form_"]):has(:where(
+  [data-sidecord-role="composer"],
+  [class^="channelTextArea_"],
+  [class*=" channelTextArea_"]
+)) {
   display: none !important;
 }
 
@@ -103,4 +183,12 @@ html[data-sidecord-reduce-motion] *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
+}
+
+html[data-sidecord-reduce-motion][data-sidecord-navigation="floating"]
+:where(
+  [data-sidecord-role="channel-list"],
+  [data-sidecord-role="account-dock"]
+) {
+  transition: none !important;
 }

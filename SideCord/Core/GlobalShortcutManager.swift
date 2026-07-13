@@ -5,6 +5,7 @@ enum GlobalShortcutError: Error, LocalizedError, Equatable {
     case invalidShortcut
     case eventHandlerInstallationFailed(OSStatus)
     case registrationFailed(OSStatus)
+    case registrationAndRecoveryFailed(registration: OSStatus, recovery: OSStatus)
 
     var errorDescription: String? {
         switch self {
@@ -14,6 +15,8 @@ enum GlobalShortcutError: Error, LocalizedError, Equatable {
             "SideCord could not listen for global shortcuts (error \(status))."
         case let .registrationFailed(status):
             "That global shortcut could not be registered (error \(status))."
+        case let .registrationAndRecoveryFailed(registration, recovery):
+            "The new shortcut failed (error \(registration)), and SideCord could not restore the previous shortcut (error \(recovery)). Choose another shortcut or restart SideCord."
         }
     }
 }
@@ -23,14 +26,15 @@ final class GlobalShortcutManager {
     typealias Handler = () -> Void
 
     private static let signature: OSType = 0x5364_4364 // "SdCd"
-    private static let identifier: UInt32 = 1
 
     private let resources = GlobalShortcutResources()
+    private let identifier: UInt32
     private var handler: Handler?
 
     private(set) var registeredShortcut: ShortcutDefinition?
 
-    init(handler: Handler? = nil) {
+    init(identifier: UInt32 = 1, handler: Handler? = nil) {
+        self.identifier = identifier
         self.handler = handler
     }
 
@@ -60,11 +64,18 @@ final class GlobalShortcutManager {
 
         do {
             try registerHotKey(shortcut)
-        } catch {
+        } catch let registrationError {
             if let previousShortcut {
-                try? registerHotKey(previousShortcut)
+                do {
+                    try registerHotKey(previousShortcut)
+                } catch {
+                    throw GlobalShortcutError.registrationAndRecoveryFailed(
+                        registration: Self.registrationStatus(from: registrationError),
+                        recovery: Self.registrationStatus(from: error)
+                    )
+                }
             }
-            throw error
+            throw registrationError
         }
     }
 
@@ -110,7 +121,7 @@ final class GlobalShortcutManager {
         var reference: EventHotKeyRef?
         let hotKeyID = EventHotKeyID(
             signature: Self.signature,
-            id: Self.identifier
+            id: identifier
         )
         let status = RegisterEventHotKey(
             shortcut.keyCode,
@@ -137,6 +148,15 @@ final class GlobalShortcutManager {
         registeredShortcut = nil
     }
 
+    private static func registrationStatus(from error: Error) -> OSStatus {
+        guard let shortcutError = error as? GlobalShortcutError,
+              case let .registrationFailed(status) = shortcutError
+        else {
+            return OSStatus(paramErr)
+        }
+        return status
+    }
+
     fileprivate func handleHotKeyEvent(_ event: EventRef) -> OSStatus {
         var hotKeyID = EventHotKeyID()
         let status = GetEventParameter(
@@ -151,7 +171,7 @@ final class GlobalShortcutManager {
 
         guard status == noErr,
               hotKeyID.signature == Self.signature,
-              hotKeyID.id == Self.identifier
+              hotKeyID.id == identifier
         else { return OSStatus(eventNotHandledErr) }
 
         handler?()

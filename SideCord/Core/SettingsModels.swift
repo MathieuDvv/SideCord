@@ -53,29 +53,282 @@ enum DiscordLayoutMode: String, CaseIterable, Codable, Identifiable, Sendable {
         case .full:
             "Keep Discord's navigation and controls visible."
         case .focus:
-            "Give the conversation the full width while keeping message input."
+            "Float navigation over the conversation and keep only essential message input."
         case .reader:
-            "A distraction-free, read-only-looking layout that hides message input."
+            "Hide navigation and message input for a distraction-free reading view."
         case .custom:
             "A layout assembled from the individual controls below."
         }
     }
 }
 
+enum DiscordNavigationPresentation: String, CaseIterable, Codable, Identifiable, Sendable {
+    case docked
+    case floating
+    case hidden
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .docked: "Docked"
+        case .floating: "Floating"
+        case .hidden: "Hidden"
+        }
+    }
+}
+
+enum DiscordComposerMode: String, CaseIterable, Codable, Identifiable, Sendable {
+    case full
+    case essential
+    case hidden
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .full: "Full"
+        case .essential: "Essential"
+        case .hidden: "Hidden"
+        }
+    }
+}
+
+enum DiscordVisualTheme: String, CaseIterable, Codable, Identifiable, Sendable {
+    case systemGlass
+    case discord
+    case oled
+    case soft
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .systemGlass: "System Glass"
+        case .discord: "Discord"
+        case .oled: "OLED"
+        case .soft: "Soft"
+        }
+    }
+}
+
+enum SideCordAccent: String, CaseIterable, Codable, Identifiable, Sendable {
+    case automatic
+    case blurple
+    case blue
+    case purple
+    case pink
+    case green
+    case orange
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .automatic: "Automatic"
+        case .blurple: "Blurple"
+        case .blue: "Blue"
+        case .purple: "Purple"
+        case .pink: "Pink"
+        case .green: "Green"
+        case .orange: "Orange"
+        }
+    }
+}
+
+enum ThemeColorScheme: String, CaseIterable, Codable, Identifiable, Sendable {
+    case system
+    case light
+    case dark
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+}
+
 struct DiscordLayoutOptions: Codable, Equatable, Sendable {
-    var hideServerRail: Bool
-    var hideChannelList: Bool
+    var navigationPresentation: DiscordNavigationPresentation
+    var composerMode: DiscordComposerMode
     var hideMemberList: Bool
     var hideAccountDock: Bool
     var simplifyHeader: Bool
-    var simplifyComposer: Bool
-    var hideComposer: Bool
     var compactMedia: Bool
     var reduceMotion: Bool
 
     init(
-        hideServerRail: Bool = false,
-        hideChannelList: Bool = false,
+        navigationPresentation: DiscordNavigationPresentation = .docked,
+        composerMode: DiscordComposerMode = .full,
+        hideMemberList: Bool = false,
+        hideAccountDock: Bool = false,
+        simplifyHeader: Bool = false,
+        compactMedia: Bool = false,
+        reduceMotion: Bool = false
+    ) {
+        self.navigationPresentation = navigationPresentation
+        self.composerMode = composerMode
+        self.hideMemberList = hideMemberList
+        self.hideAccountDock = hideAccountDock
+        self.simplifyHeader = simplifyHeader
+        self.compactMedia = compactMedia
+        self.reduceMotion = reduceMotion
+    }
+
+    static let full = DiscordLayoutOptions()
+
+    static let focus = DiscordLayoutOptions(
+        navigationPresentation: .floating,
+        composerMode: .essential,
+        hideMemberList: true,
+        simplifyHeader: true
+    )
+
+    static let reader = DiscordLayoutOptions(
+        navigationPresentation: .hidden,
+        composerMode: .hidden,
+        hideMemberList: true,
+        hideAccountDock: true,
+        simplifyHeader: true
+    )
+
+    var isFull: Bool { self == .full }
+
+    private enum CodingKeys: String, CodingKey {
+        case navigationPresentation
+        case composerMode
+        case hideMemberList
+        case hideAccountDock
+        case simplifyHeader
+        case compactMedia
+        case reduceMotion
+
+        // v1 keys. Decode these for migration but never encode them.
+        case hideServerRail
+        case hideChannelList
+        case simplifyComposer
+        case hideComposer
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        func decode<T: Decodable>(_ type: T.Type, forKey key: CodingKeys) -> T? {
+            try? container.decodeIfPresent(type, forKey: key)
+        }
+
+        if let storedPresentation = decode(
+            DiscordNavigationPresentation.self,
+            forKey: .navigationPresentation
+        ) {
+            navigationPresentation = storedPresentation
+        } else {
+            navigationPresentation = Self.migratedNavigationPresentation(
+                hideServerRail: decode(Bool.self, forKey: .hideServerRail) ?? false,
+                hideChannelList: decode(Bool.self, forKey: .hideChannelList) ?? false
+            )
+        }
+
+        if let storedComposerMode = decode(DiscordComposerMode.self, forKey: .composerMode) {
+            composerMode = storedComposerMode
+        } else {
+            composerMode = Self.migratedComposerMode(
+                simplifyComposer: decode(Bool.self, forKey: .simplifyComposer) ?? false,
+                hideComposer: decode(Bool.self, forKey: .hideComposer) ?? false
+            )
+        }
+
+        hideMemberList = decode(Bool.self, forKey: .hideMemberList) ?? false
+        hideAccountDock = decode(Bool.self, forKey: .hideAccountDock) ?? false
+        simplifyHeader = decode(Bool.self, forKey: .simplifyHeader) ?? false
+        compactMedia = decode(Bool.self, forKey: .compactMedia) ?? false
+        reduceMotion = decode(Bool.self, forKey: .reduceMotion) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(navigationPresentation, forKey: .navigationPresentation)
+        try container.encode(composerMode, forKey: .composerMode)
+        try container.encode(hideMemberList, forKey: .hideMemberList)
+        try container.encode(hideAccountDock, forKey: .hideAccountDock)
+        try container.encode(simplifyHeader, forKey: .simplifyHeader)
+        try container.encode(compactMedia, forKey: .compactMedia)
+        try container.encode(reduceMotion, forKey: .reduceMotion)
+    }
+
+    private static func migratedNavigationPresentation(
+        hideServerRail: Bool,
+        hideChannelList: Bool
+    ) -> DiscordNavigationPresentation {
+        switch (hideServerRail, hideChannelList) {
+        case (false, false): .docked
+        case (true, true): .hidden
+        default: .floating
+        }
+    }
+
+    private static func migratedComposerMode(
+        simplifyComposer: Bool,
+        hideComposer: Bool
+    ) -> DiscordComposerMode {
+        if hideComposer { return .hidden }
+        if simplifyComposer { return .essential }
+        return .full
+    }
+
+    // These projections keep v1 call sites source-compatible while UI and CSS
+    // consumers move to the richer v2 enums. They are not part of persistence.
+    @available(*, deprecated, message: "Use navigationPresentation")
+    var hideServerRail: Bool {
+        get { navigationPresentation != .docked }
+        set {
+            navigationPresentation = Self.migratedNavigationPresentation(
+                hideServerRail: newValue,
+                hideChannelList: hideChannelList
+            )
+        }
+    }
+
+    @available(*, deprecated, message: "Use navigationPresentation")
+    var hideChannelList: Bool {
+        get { navigationPresentation == .hidden }
+        set {
+            navigationPresentation = Self.migratedNavigationPresentation(
+                hideServerRail: hideServerRail,
+                hideChannelList: newValue
+            )
+        }
+    }
+
+    @available(*, deprecated, message: "Use composerMode")
+    var simplifyComposer: Bool {
+        get { composerMode == .essential }
+        set {
+            guard composerMode != .hidden else { return }
+            composerMode = newValue ? .essential : .full
+        }
+    }
+
+    @available(*, deprecated, message: "Use composerMode")
+    var hideComposer: Bool {
+        get { composerMode == .hidden }
+        set {
+            if newValue {
+                composerMode = .hidden
+            } else if composerMode == .hidden {
+                composerMode = .full
+            }
+        }
+    }
+
+    @available(*, deprecated, message: "Use the v2 initializer")
+    init(
+        hideServerRail: Bool,
+        hideChannelList: Bool,
         hideMemberList: Bool = false,
         hideAccountDock: Bool = false,
         simplifyHeader: Bool = false,
@@ -84,75 +337,19 @@ struct DiscordLayoutOptions: Codable, Equatable, Sendable {
         compactMedia: Bool = false,
         reduceMotion: Bool = false
     ) {
-        self.hideServerRail = hideServerRail
-        self.hideChannelList = hideChannelList
+        navigationPresentation = Self.migratedNavigationPresentation(
+            hideServerRail: hideServerRail,
+            hideChannelList: hideChannelList
+        )
+        composerMode = Self.migratedComposerMode(
+            simplifyComposer: simplifyComposer,
+            hideComposer: hideComposer
+        )
         self.hideMemberList = hideMemberList
         self.hideAccountDock = hideAccountDock
         self.simplifyHeader = simplifyHeader
-        self.simplifyComposer = simplifyComposer
-        self.hideComposer = hideComposer
         self.compactMedia = compactMedia
         self.reduceMotion = reduceMotion
-    }
-
-    static let full = DiscordLayoutOptions()
-
-    static let focus = DiscordLayoutOptions(
-        hideServerRail: true,
-        hideChannelList: true,
-        hideMemberList: true,
-        simplifyHeader: true,
-        simplifyComposer: true
-    )
-
-    static let reader = DiscordLayoutOptions(
-        hideServerRail: true,
-        hideChannelList: true,
-        hideMemberList: true,
-        hideAccountDock: true,
-        simplifyHeader: true,
-        simplifyComposer: true,
-        hideComposer: true
-    )
-
-    var isFull: Bool { self == .full }
-
-    private enum CodingKeys: String, CodingKey {
-        case hideServerRail
-        case hideChannelList
-        case hideMemberList
-        case hideAccountDock
-        case simplifyHeader
-        case simplifyComposer
-        case hideComposer
-        case compactMedia
-        case reduceMotion
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        hideServerRail = try container.decodeIfPresent(Bool.self, forKey: .hideServerRail) ?? false
-        hideChannelList = try container.decodeIfPresent(Bool.self, forKey: .hideChannelList) ?? false
-        hideMemberList = try container.decodeIfPresent(Bool.self, forKey: .hideMemberList) ?? false
-        hideAccountDock = try container.decodeIfPresent(Bool.self, forKey: .hideAccountDock) ?? false
-        simplifyHeader = try container.decodeIfPresent(Bool.self, forKey: .simplifyHeader) ?? false
-        simplifyComposer = try container.decodeIfPresent(Bool.self, forKey: .simplifyComposer) ?? false
-        hideComposer = try container.decodeIfPresent(Bool.self, forKey: .hideComposer) ?? false
-        compactMedia = try container.decodeIfPresent(Bool.self, forKey: .compactMedia) ?? false
-        reduceMotion = try container.decodeIfPresent(Bool.self, forKey: .reduceMotion) ?? false
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(hideServerRail, forKey: .hideServerRail)
-        try container.encode(hideChannelList, forKey: .hideChannelList)
-        try container.encode(hideMemberList, forKey: .hideMemberList)
-        try container.encode(hideAccountDock, forKey: .hideAccountDock)
-        try container.encode(simplifyHeader, forKey: .simplifyHeader)
-        try container.encode(simplifyComposer, forKey: .simplifyComposer)
-        try container.encode(hideComposer, forKey: .hideComposer)
-        try container.encode(compactMedia, forKey: .compactMedia)
-        try container.encode(reduceMotion, forKey: .reduceMotion)
     }
 }
 
@@ -160,6 +357,11 @@ struct ShortcutDefinition: Codable, Equatable, Hashable, Sendable {
     static let optionD = ShortcutDefinition(
         keyCode: UInt32(kVK_ANSI_D),
         modifiers: UInt32(optionKey)
+    )
+
+    static let optionShiftD = ShortcutDefinition(
+        keyCode: UInt32(kVK_ANSI_D),
+        modifiers: UInt32(optionKey | shiftKey)
     )
 
     /// A hardware-independent Carbon virtual key code.

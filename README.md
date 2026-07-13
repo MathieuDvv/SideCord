@@ -6,15 +6,20 @@ resizable, auto-retracting sidebar on every Space.
 ## Features
 
 - Persistent Discord session in `WKWebView`; hiding the sidebar does not reload it
-- Edge-hover reveal and a configurable global shortcut (Option–D by default)
+- Edge-hover reveal and configurable global shortcuts (Option–D for the panel,
+  Option–Shift–D for compact Discord navigation)
 - Floating AppKit panel with configurable screen spacing that follows the
   pointer's display and joins every Space
 - Left or right placement, per-display widths, pinning, and maximize/restore
 - Full, Focus, Reader, and Custom Discord layouts with self-healing CSS mods
+- Separate floating Discord server rail beside SideCord and an on-demand channel
+  drawer in Focus mode
+- Essential composer controls that keep attachments, GIFs, and emoji available
+- System Glass, Discord, OLED, and Soft themes with light and dark variants
 - Compact density preset and conservative local custom CSS
 - Discord attachments, downloads, camera, and microphone permission handling
-- Native menu bar, onboarding, Settings, Launch at Login, Liquid Glass controls,
-  and Reduce Motion/Transparency support
+- Native menu bar, onboarding, a visual Liquid Glass Settings app, Launch at
+  Login, and Reduce Motion/Transparency support
 
 ## Development
 

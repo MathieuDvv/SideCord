@@ -8,8 +8,10 @@ final class PanelController: NSObject, ObservableObject {
     @Published private(set) var isMaximized = false
 
     let panel: SidebarPanel
+    let railPanel: DiscordRailPanel
 
     private let settings: AppSettings
+    private let webController: DiscordWebController
     private lazy var edgeMonitor = EdgeMonitor(
         settings: settings,
         isSuppressed: { [weak self] in
@@ -34,9 +36,15 @@ final class PanelController: NSObject, ObservableObject {
     private var restoreAfterSystemInterruption = false
     private var restoreExplicitDismissalAfterSystemInterruption = false
 
-    init(settings: AppSettings) {
+    init(
+        settings: AppSettings,
+        webController: DiscordWebController,
+        railModel: DiscordRailModel
+    ) {
         self.settings = settings
+        self.webController = webController
         panel = SidebarPanel()
+        railPanel = DiscordRailPanel(settings: settings, railModel: railModel)
         super.init()
         panel.delegate = self
         observeSettings()
@@ -49,6 +57,7 @@ final class PanelController: NSObject, ObservableObject {
         contentView.layer?.cornerCurve = .continuous
         contentView.layer?.masksToBounds = true
         panel.contentView = contentView
+        updatePanelAppearance(maximized: false)
     }
 
     func start() {
@@ -69,8 +78,10 @@ final class PanelController: NSObject, ObservableObject {
         pointerTimer = nil
         cancelAutomaticRetraction()
         panel.orderOut(nil)
+        railPanel.orderOut(nil)
         isVisible = false
         panel.contentView = nil
+        railPanel.contentView = nil
         panel.delegate = nil
         cancellables.removeAll()
 
@@ -138,7 +149,7 @@ final class PanelController: NSObject, ObservableObject {
         let targetFrame = isMaximized
             ? screen.visibleFrame
             : normalFrame(for: screen)
-        updateCornerRadius(maximized: isMaximized)
+        updatePanelAppearance(maximized: isMaximized)
         animatePanel(to: targetFrame, alpha: 1, orderOutWhenComplete: false)
     }
 
@@ -155,6 +166,7 @@ final class PanelController: NSObject, ObservableObject {
         let displayID = PanelGeometry.displayID(for: screen)
 
         if isVisible, activeDisplayID == displayID {
+            repositionForCurrentSettings()
             if activate {
                 NSApp.activate(ignoringOtherApps: true)
                 panel.makeKeyAndOrderFront(nil)
@@ -167,7 +179,7 @@ final class PanelController: NSObject, ObservableObject {
         activeDisplayID = displayID
         isMaximized = false
         setPanelResizable(true)
-        updateCornerRadius(maximized: false)
+        updatePanelAppearance(maximized: false)
 
         let targetFrame = normalFrame(for: screen)
         let hiddenFrame = PanelGeometry.hiddenFrame(
@@ -196,13 +208,14 @@ final class PanelController: NSObject, ObservableObject {
         cancelAutomaticRetraction()
         guard let screen = activeScreen ?? panel.screen else {
             panel.orderOut(nil)
+            railPanel.orderOut(nil)
             isVisible = false
             return
         }
 
         isMaximized = false
         setPanelResizable(true)
-        updateCornerRadius(maximized: false)
+        updatePanelAppearance(maximized: false)
         isVisible = false
 
         let hiddenFrame = PanelGeometry.hiddenFrame(
@@ -233,9 +246,40 @@ final class PanelController: NSObject, ObservableObject {
         let generation = animationGeneration
         isAnimating = true
 
+        let screen = activeScreen ?? panel.screen
+        let targetRailFrame = orderOutWhenComplete || isMaximized
+            ? nil
+            : screen.flatMap { railFrame(adjacentTo: targetFrame, on: $0) }
+        var railAnimationTarget: NSRect?
+
+        if let targetRailFrame, let screen {
+            if !railPanel.isVisible {
+                let hiddenRailFrame = PanelGeometry.hiddenFrame(
+                    from: targetRailFrame,
+                    screenFrame: screen.frame,
+                    edge: settings.sidebarEdge
+                )
+                railPanel.setFrame(hiddenRailFrame, display: false)
+                railPanel.alphaValue = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+                    ? 1
+                    : 0.78
+                railPanel.orderFrontRegardless()
+            }
+            railAnimationTarget = targetRailFrame
+        } else if railPanel.isVisible, let screen {
+            railAnimationTarget = PanelGeometry.hiddenFrame(
+                from: railPanel.frame,
+                screenFrame: screen.frame,
+                edge: settings.sidebarEdge
+            )
+        }
+
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         if reduceMotion {
             panel.setFrame(targetFrame, display: true)
+            if let railAnimationTarget {
+                railPanel.setFrame(railAnimationTarget, display: true)
+            }
         }
 
         NSAnimationContext.runAnimationGroup { context in
@@ -245,14 +289,22 @@ final class PanelController: NSObject, ObservableObject {
                 : CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
             if !reduceMotion {
                 panel.animator().setFrame(targetFrame, display: true)
+                if let railAnimationTarget {
+                    railPanel.animator().setFrame(railAnimationTarget, display: true)
+                }
             }
             panel.animator().alphaValue = alpha
+            railPanel.animator().alphaValue = targetRailFrame == nil ? 0 : alpha
         } completionHandler: { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.animationGeneration == generation else { return }
                 self.isAnimating = false
                 if orderOutWhenComplete, !self.isVisible {
                     self.panel.orderOut(nil)
+                }
+                if targetRailFrame == nil {
+                    self.railPanel.orderOut(nil)
+                    self.railPanel.alphaValue = 1
                 }
             }
         }
@@ -270,7 +322,9 @@ final class PanelController: NSObject, ObservableObject {
 
         if isPointerEngaged(at: NSEvent.mouseLocation)
             || panel.isKeyWindow
-            || panel.attachedSheet != nil {
+            || railPanel.isKeyWindow
+            || panel.attachedSheet != nil
+            || railPanel.attachedSheet != nil {
             cancelAutomaticRetraction()
         } else {
             scheduleAutomaticRetraction()
@@ -278,7 +332,11 @@ final class PanelController: NSObject, ObservableObject {
     }
 
     private func isPointerEngaged(at point: NSPoint) -> Bool {
-        if panel.frame.insetBy(dx: -2, dy: -2).contains(point) {
+        var engagementFrame = panel.frame
+        if railPanel.isVisible {
+            engagementFrame = engagementFrame.union(railPanel.frame)
+        }
+        if engagementFrame.insetBy(dx: -2, dy: -2).contains(point) {
             return true
         }
 
@@ -316,7 +374,9 @@ final class PanelController: NSObject, ObservableObject {
                 self.retractionTimer = nil
                 guard !self.isPointerEngaged(at: NSEvent.mouseLocation),
                       !self.panel.isKeyWindow,
+                      !self.railPanel.isKeyWindow,
                       self.panel.attachedSheet == nil,
+                      self.railPanel.attachedSheet == nil,
                       !self.settings.isPinned
                 else { return }
                 self.performRetraction(force: false)
@@ -342,12 +402,35 @@ final class PanelController: NSObject, ObservableObject {
 
     private func repositionForCurrentSettings() {
         guard isVisible, let screen = activeScreen ?? panel.screen else { return }
+        updatePanelAppearance(maximized: isMaximized)
         let target = isMaximized ? screen.visibleFrame : normalFrame(for: screen)
         animatePanel(to: target, alpha: 1, orderOutWhenComplete: false)
     }
 
-    private func updateCornerRadius(maximized: Bool) {
+    private var shouldPresentRail: Bool {
+        guard settings.floatingRailEnabled else { return false }
+        let navigation = settings.discordLayoutOptions.navigationPresentation
+        return navigation == .floating
+            || (navigation == .hidden && webController.isNavigationDrawerOpen)
+    }
+
+    private func railFrame(adjacentTo sidebarFrame: NSRect, on screen: NSScreen) -> NSRect? {
+        guard shouldPresentRail, !isMaximized else { return nil }
+        return PanelGeometry.railFrame(
+            adjacentTo: sidebarFrame,
+            in: screen.visibleFrame,
+            edge: settings.sidebarEdge
+        )
+    }
+
+    private func updatePanelAppearance(maximized: Bool) {
         panel.contentView?.layer?.cornerRadius = maximized ? 0 : 16
+        panel.contentView?.layer?.masksToBounds = true
+        panel.hasShadow = !maximized
+        panel.minSize = NSSize(
+            width: PanelGeometry.minimumWidth,
+            height: 300
+        )
     }
 
     private var canPresentPanel: Bool {
@@ -388,6 +471,50 @@ final class PanelController: NSObject, ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self, !self.isMaximized else { return }
                     self.repositionForCurrentSettings()
+                }
+            }
+            .store(in: &cancellables)
+
+        Publishers.Merge(
+            settings.$discordLayoutMode.dropFirst().map { _ in () },
+            settings.$customDiscordLayoutOptions.dropFirst().map { _ in () }
+        )
+        .sink { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.updatePanelAppearance(maximized: self.isMaximized)
+                if !self.isMaximized {
+                    self.repositionForCurrentSettings()
+                }
+            }
+        }
+            .store(in: &cancellables)
+
+        settings.$floatingRailEnabled
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if self.isVisible, !self.isMaximized {
+                        self.repositionForCurrentSettings()
+                    } else if !self.shouldPresentRail {
+                        self.railPanel.orderOut(nil)
+                    }
+                }
+            }
+            .store(in: &cancellables)
+
+        webController.$isNavigationDrawerOpen
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.updatePanelAppearance(maximized: self.isMaximized)
+                    if !self.isMaximized {
+                        self.repositionForCurrentSettings()
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -503,6 +630,12 @@ extension PanelController: NSWindowDelegate {
         )
         if !NSEqualRects(panel.frame, correctedFrame) {
             panel.setFrame(correctedFrame, display: true)
+        }
+        if let railFrame = railFrame(adjacentTo: correctedFrame, on: screen) {
+            railPanel.setFrame(railFrame, display: true)
+            if !railPanel.isVisible { railPanel.orderFrontRegardless() }
+        } else {
+            railPanel.orderOut(nil)
         }
         isAdjustingFrame = false
         persistCurrentWidth(on: screen)

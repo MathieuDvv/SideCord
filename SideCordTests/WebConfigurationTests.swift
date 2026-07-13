@@ -4,6 +4,149 @@ import XCTest
 
 final class WebConfigurationTests: XCTestCase {
     @MainActor
+    func testRailModelValidatesAndCapsBridgePayload() throws {
+        let model = DiscordRailModel()
+        model.receive(messageItems: [
+            [
+                "id": "direct-messages",
+                "title": "  Direct Messages  ",
+                "icon": NSNull(),
+                "kind": "directMessages",
+                "selected": true,
+                "unread": false,
+                "mentions": NSNull()
+            ],
+            [
+                "id": "server:123",
+                "title": String(repeating: "S", count: 140),
+                "icon": "https://cdn.discordapp.com/icons/123/example.png",
+                "kind": "server",
+                "selected": false,
+                "unread": true,
+                "mentions": 7
+            ]
+        ])
+
+        XCTAssertEqual(model.items.count, 2)
+        XCTAssertEqual(model.items[0].title, "Direct Messages")
+        XCTAssertNil(model.items[0].iconURL)
+        XCTAssertEqual(model.items[1].title.count, DiscordRailModel.maximumTitleLength)
+        XCTAssertEqual(model.items[1].kind, .server)
+        XCTAssertEqual(model.items[1].mentionCount, 7)
+        XCTAssertEqual(model.items[1].iconURL?.host, "cdn.discordapp.com")
+
+        let acceptedItems = model.items
+        model.receive(messageItems: [[
+            "id": "server:evil",
+            "title": "External icon",
+            "icon": "https://tracking.example/icon.png",
+            "kind": "server",
+            "selected": false,
+            "unread": false,
+            "mentions": NSNull()
+        ]])
+        XCTAssertEqual(model.items, acceptedItems)
+
+        let oversizedPayload: [[String: Any]] = (0...DiscordRailModel.maximumItemCount).map {
+            [
+                "id": "server:\($0)",
+                "title": "Server \($0)",
+                "icon": NSNull(),
+                "kind": "server",
+                "selected": false,
+                "unread": false,
+                "mentions": NSNull()
+            ]
+        }
+        model.receive(messageItems: oversizedPayload)
+        XCTAssertEqual(model.items, acceptedItems)
+    }
+
+    @MainActor
+    func testRailModelRejectsDuplicateOrMalformedIdentifiersAndUnsafeCounts() {
+        let model = DiscordRailModel()
+        let baseline: [[String: Any]] = [[
+            "id": "action:create-server",
+            "title": "Add a Server",
+            "icon": "data:image/png;base64,iVBORw0KGgo=",
+            "kind": "action",
+            "selected": false,
+            "unread": false,
+            "mentions": NSNull()
+        ]]
+        model.receive(messageItems: baseline)
+        XCTAssertEqual(model.items.first?.kind, .action)
+        XCTAssertEqual(model.items.first?.iconURL?.scheme, "data")
+
+        for invalidPayload in [
+            [baseline[0], baseline[0]],
+            [[
+                "id": "server:1');alert(1)",
+                "title": "Bad",
+                "icon": NSNull(),
+                "kind": "server",
+                "selected": false,
+                "unread": false,
+                "mentions": NSNull()
+            ]],
+            [[
+                "id": "server:1",
+                "title": "Bad count",
+                "icon": NSNull(),
+                "kind": "server",
+                "selected": false,
+                "unread": true,
+                "mentions": 10_000
+            ]]
+        ] {
+            model.receive(messageItems: invalidPayload)
+            XCTAssertEqual(model.items.count, 1)
+            XCTAssertEqual(model.items.first?.id, "action:create-server")
+        }
+    }
+
+    func testRuntimeActionQueueWaitsForReadinessAndPreservesOrder() {
+        var queue = DiscordRuntimeActionQueue()
+        queue.enqueue("toggleDrawer")
+        queue.enqueue("toggleDrawer")
+        queue.enqueue("openDrawer")
+
+        XCTAssertNil(queue.beginNext())
+        queue.markReady()
+
+        XCTAssertEqual(queue.beginNext(), "toggleDrawer")
+        queue.complete("toggleDrawer", succeeded: true)
+        XCTAssertEqual(queue.beginNext(), "toggleDrawer")
+        queue.complete("toggleDrawer", succeeded: true)
+        XCTAssertEqual(queue.beginNext(), "openDrawer")
+        queue.complete("openDrawer", succeeded: true)
+        XCTAssertTrue(queue.pending.isEmpty)
+    }
+
+    func testRuntimeActionQueueRetriesAfterRuntimeFailureOrNavigationRace() {
+        var queue = DiscordRuntimeActionQueue()
+        queue.enqueue("openDrawer")
+        queue.markReady()
+        XCTAssertEqual(queue.beginNext(), "openDrawer")
+
+        queue.markLoading()
+        queue.complete("openDrawer", succeeded: true)
+        XCTAssertEqual(queue.pending, ["openDrawer"])
+        XCTAssertNil(queue.inFlight)
+
+        queue.markReady()
+        XCTAssertEqual(queue.beginNext(), "openDrawer")
+        queue.complete("openDrawer", succeeded: false)
+        XCTAssertFalse(queue.isReady)
+        XCTAssertEqual(queue.pending, ["openDrawer"])
+
+        queue.markReady()
+        XCTAssertEqual(queue.beginNext(), "openDrawer")
+        queue.complete("openDrawer", succeeded: true)
+        XCTAssertTrue(queue.pending.isEmpty)
+    }
+
+    @MainActor
     func testDiscordConfigurationAddsSafariIdentityBeforeNavigation() async throws {
         let configuration = DiscordWebConfiguration.make()
         XCTAssertEqual(

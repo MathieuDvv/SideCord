@@ -22,6 +22,7 @@ struct SidebarRootView: View {
                 .padding(10)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .preferredColorScheme(preferredColorScheme)
     }
 
     private var controlStrip: some View {
@@ -31,6 +32,17 @@ struct SidebarRootView: View {
                     .controlSize(.small)
                     .padding(.horizontal, 7)
                     .accessibilityLabel("Loading Discord")
+            }
+
+            if settings.discordLayoutOptions.navigationPresentation == .floating {
+                Button {
+                    webController.toggleNavigationDrawer()
+                } label: {
+                    Image(systemName: "sidebar.left")
+                        .frame(width: 24, height: 24)
+                }
+                .help("Show or hide Discord channels")
+                .accessibilityLabel("Toggle Discord navigation drawer")
             }
 
             Button {
@@ -81,15 +93,53 @@ struct SidebarRootView: View {
 
                     Divider()
 
-                    Toggle("Hide servers", isOn: discordLayoutOptionBinding(\.hideServerRail))
-                    Toggle("Hide channels and DMs", isOn: discordLayoutOptionBinding(\.hideChannelList))
+                    Menu("Navigation") {
+                        ForEach(DiscordNavigationPresentation.allCases) { presentation in
+                            Button {
+                                setNavigationPresentation(presentation)
+                            } label: {
+                                if settings.discordLayoutOptions.navigationPresentation == presentation {
+                                    Label(navigationTitle(presentation), systemImage: "checkmark")
+                                } else {
+                                    Text(navigationTitle(presentation))
+                                }
+                            }
+                        }
+                    }
+
+                    Menu("Message composer") {
+                        ForEach(DiscordComposerMode.allCases) { mode in
+                            Button {
+                                setComposerMode(mode)
+                            } label: {
+                                if settings.discordLayoutOptions.composerMode == mode {
+                                    Label(composerTitle(mode), systemImage: "checkmark")
+                                } else {
+                                    Text(composerTitle(mode))
+                                }
+                            }
+                        }
+                    }
+
                     Toggle("Hide members", isOn: discordLayoutOptionBinding(\.hideMemberList))
                     Toggle("Hide account and voice dock", isOn: discordLayoutOptionBinding(\.hideAccountDock))
                     Toggle("Simplify header", isOn: discordLayoutOptionBinding(\.simplifyHeader))
-                    Toggle("Simplify composer", isOn: discordLayoutOptionBinding(\.simplifyComposer))
-                    Toggle("Hide composer", isOn: discordLayoutOptionBinding(\.hideComposer))
                     Toggle("Limit tall message media", isOn: discordLayoutOptionBinding(\.compactMedia))
                     Toggle("Reduce Discord motion", isOn: discordLayoutOptionBinding(\.reduceMotion))
+                }
+
+                Menu("Visual Theme", systemImage: "paintpalette") {
+                    ForEach(DiscordVisualTheme.allCases) { theme in
+                        Button {
+                            settings.visualTheme = theme
+                        } label: {
+                            if settings.visualTheme == theme {
+                                Label(themeTitle(theme), systemImage: "checkmark")
+                            } else {
+                                Text(themeTitle(theme))
+                            }
+                        }
+                    }
                 }
 
                 Divider()
@@ -103,8 +153,8 @@ struct SidebarRootView: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            .help("Browser actions")
-            .accessibilityLabel("Browser actions")
+            .help("SideCord options")
+            .accessibilityLabel("SideCord options")
 
             Button {
                 panelController.retract()
@@ -118,7 +168,9 @@ struct SidebarRootView: View {
             .accessibilityLabel("Hide SideCord")
         }
         .buttonStyle(.plain)
+        .tint(nativeAccentColor)
         .padding(5)
+        .background(nativeChromeColor, in: Capsule())
         .glassEffect(.regular, in: .capsule)
     }
 
@@ -130,6 +182,82 @@ struct SidebarRootView: View {
             set: { settings.setDiscordLayoutOption(keyPath, enabled: $0) }
         )
     }
+
+    private func setNavigationPresentation(_ presentation: DiscordNavigationPresentation) {
+        var options = settings.discordLayoutOptions
+        options.navigationPresentation = presentation
+        settings.customDiscordLayoutOptions = options
+        settings.discordLayoutMode = .custom
+    }
+
+    private func setComposerMode(_ mode: DiscordComposerMode) {
+        var options = settings.discordLayoutOptions
+        options.composerMode = mode
+        settings.customDiscordLayoutOptions = options
+        settings.discordLayoutMode = .custom
+    }
+
+    private func navigationTitle(_ presentation: DiscordNavigationPresentation) -> String {
+        switch presentation {
+        case .docked: "Docked"
+        case .floating: "Floating rail and drawer"
+        case .hidden: "Hidden"
+        }
+    }
+
+    private func composerTitle(_ mode: DiscordComposerMode) -> String {
+        switch mode {
+        case .full: "Full"
+        case .essential: "Essential controls"
+        case .hidden: "Hidden"
+        }
+    }
+
+    private func themeTitle(_ theme: DiscordVisualTheme) -> String {
+        switch theme {
+        case .systemGlass: "System Glass"
+        case .discord: "Discord"
+        case .oled: "OLED"
+        case .soft: "Soft"
+        }
+    }
+
+    private var preferredColorScheme: ColorScheme? {
+        switch settings.themeColorScheme {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    private var nativeAccentColor: Color {
+        switch settings.themeAccent {
+        case .automatic:
+            Self.blurple
+        case .blurple: Self.blurple
+        case .blue: .blue
+        case .purple: .purple
+        case .pink: .pink
+        case .green: .green
+        case .orange: .orange
+        }
+    }
+
+    private var nativeChromeColor: Color {
+        let opacity = 0.08 + (0.16 * settings.themeIntensity)
+        switch settings.visualTheme {
+        case .systemGlass:
+            return nativeAccentColor.opacity(opacity * 0.4)
+        case .discord:
+            return Color(red: 0.19, green: 0.20, blue: 0.22).opacity(opacity)
+        case .oled:
+            return .black.opacity(opacity * 1.4)
+        case .soft:
+            return nativeAccentColor.opacity(opacity * 0.65)
+        }
+    }
+
+    private static let blurple = Color(red: 0.345, green: 0.396, blue: 0.949)
 
     private func errorView(_ error: DiscordWebError) -> some View {
         VStack(spacing: 12) {

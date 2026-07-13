@@ -4,6 +4,9 @@ enum PanelGeometry {
     static let minimumWidth: CGFloat = 320
     static let maximumDisplayFraction: CGFloat = 0.8
     static let hiddenOvershoot: CGFloat = 4
+    static let railWidth: CGFloat = 76
+    static let railGap: CGFloat = 12
+    static let railVerticalInset: CGFloat = 12
 
     static func displayID(for screen: NSScreen) -> String {
         let key = NSDeviceDescriptionKey("NSScreenNumber")
@@ -48,6 +51,48 @@ enum PanelGeometry {
             width: width,
             height: max(1, usableFrame.height - (safeInset * 2))
         )
+    }
+
+    static func railFrame(
+        adjacentTo sidebarFrame: NSRect,
+        in usableFrame: NSRect,
+        edge: SidebarEdge,
+        requestedWidth: CGFloat = railWidth,
+        gap: CGFloat = railGap,
+        verticalInset: CGFloat = railVerticalInset
+    ) -> NSRect? {
+        guard !sidebarFrame.isEmpty,
+              requestedWidth.isFinite,
+              gap.isFinite,
+              verticalInset.isFinite
+        else { return nil }
+
+        let safeGap = max(0, gap)
+        let availableWidth: CGFloat
+        let x: CGFloat
+        switch edge {
+        case .right:
+            availableWidth = sidebarFrame.minX - safeGap - usableFrame.minX
+            let width = min(max(0, requestedWidth), max(0, availableWidth))
+            guard width >= 1 else { return nil }
+            x = sidebarFrame.minX - safeGap - width
+        case .left:
+            availableWidth = usableFrame.maxX - sidebarFrame.maxX - safeGap
+            let width = min(max(0, requestedWidth), max(0, availableWidth))
+            guard width >= 1 else { return nil }
+            x = sidebarFrame.maxX + safeGap
+        }
+
+        let width = min(max(0, requestedWidth), max(0, availableWidth))
+        let safeVerticalInset = min(
+            max(0, verticalInset),
+            max(0, (sidebarFrame.height - 1) / 2)
+        )
+        let minY = max(usableFrame.minY, sidebarFrame.minY + safeVerticalInset)
+        let maxY = min(usableFrame.maxY, sidebarFrame.maxY - safeVerticalInset)
+        guard maxY > minY else { return nil }
+
+        return NSRect(x: x, y: minY, width: width, height: maxY - minY)
     }
 
     static func hiddenFrame(
@@ -100,4 +145,5 @@ enum PanelGeometry {
         let maximum = max(0, (min(usableFrame.width, usableFrame.height) - 1) / 2)
         return min(max(requestedInset, 0), maximum)
     }
+
 }

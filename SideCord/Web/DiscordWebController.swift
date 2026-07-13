@@ -46,9 +46,45 @@ enum DiscordWebConfiguration {
     }
 }
 
+struct DiscordRuntimeActionQueue: Equatable {
+    private(set) var isReady = false
+    private(set) var pending: [String] = []
+    private(set) var inFlight: String?
+
+    mutating func enqueue(_ action: String) {
+        pending.append(action)
+    }
+
+    mutating func markLoading() {
+        isReady = false
+        inFlight = nil
+    }
+
+    mutating func markReady() {
+        isReady = true
+    }
+
+    mutating func beginNext() -> String? {
+        guard isReady, inFlight == nil, let action = pending.first else { return nil }
+        inFlight = action
+        return action
+    }
+
+    mutating func complete(_ action: String, succeeded: Bool) {
+        guard inFlight == action else { return }
+        inFlight = nil
+        if succeeded {
+            if pending.first == action { pending.removeFirst() }
+        } else {
+            isReady = false
+        }
+    }
+}
+
 @MainActor
 final class DiscordWebController: NSObject, ObservableObject {
     static let discordAppURL = URL(string: "https://discord.com/app")!
+    private static let runtimeMessageHandlerName = DiscordCSSComposer.messageHandlerName
 
     @Published private(set) var isLoading = false
     @Published private(set) var canGoBack = false
@@ -56,23 +92,32 @@ final class DiscordWebController: NSObject, ObservableObject {
     @Published private(set) var currentURL: URL?
     @Published private(set) var error: DiscordWebError?
     @Published private(set) var downloadError: String?
+    @Published private(set) var isNavigationDrawerOpen = false
 
     let webView: WKWebView
+    lazy private(set) var railModel = DiscordRailModel(controller: self)
 
     private let settings: AppSettings
     private let compactPresetCSS: String
     private let layoutModifiersCSS: String
+    private let visualThemesCSS: String
     private var settingsCancellables = Set<AnyCancellable>()
     private var attemptedProcessRecovery = false
     private var downloadSecurityScopedURLs: [ObjectIdentifier: URL] = [:]
     private var pendingUserInitiatedMainFrameNavigation = false
+    private var runtimeActions = DiscordRuntimeActionQueue()
+    private var runtimeDocumentGeneration = 0
+    private var expectedDrawerState: Bool?
+    private var drawerExpectationGeneration = 0
     private var authenticationPopups: [ObjectIdentifier: AuthenticationPopupController] = [:]
     private var approvedProgrammaticNavigationURLs = Set<String>()
+    private var isRuntimeMessageHandlerInstalled = false
 
     init(settings: AppSettings, resourceBundle: Bundle = .main) {
         self.settings = settings
         compactPresetCSS = Self.loadBundledCSS(named: "compact", from: resourceBundle)
         layoutModifiersCSS = Self.loadBundledCSS(named: "layout-mods", from: resourceBundle)
+        visualThemesCSS = Self.loadBundledCSS(named: "visual-themes", from: resourceBundle)
 
         let configuration = DiscordWebConfiguration.make()
         webView = WKWebView(frame: .zero, configuration: configuration)
@@ -81,6 +126,11 @@ final class DiscordWebController: NSObject, ObservableObject {
 
         webView.navigationDelegate = self
         webView.uiDelegate = self
+        webView.configuration.userContentController.add(
+            self,
+            name: Self.runtimeMessageHandlerName
+        )
+        isRuntimeMessageHandlerInstalled = true
         webView.allowsMagnification = true
         webView.allowsBackForwardNavigationGestures = true
 
@@ -123,6 +173,30 @@ final class DiscordWebController: NSObject, ObservableObject {
         downloadError = nil
     }
 
+    func toggleNavigationDrawer() {
+        setOptimisticDrawerState(!isNavigationDrawerOpen)
+        performRuntimeAction("toggleDrawer")
+    }
+
+    func openNavigationDrawer() {
+        setOptimisticDrawerState(true)
+        performRuntimeAction("openDrawer")
+    }
+
+    func closeNavigationDrawer() {
+        setOptimisticDrawerState(false)
+        performRuntimeAction("closeDrawer")
+    }
+
+    func shutdown() {
+        guard isRuntimeMessageHandlerInstalled else { return }
+        webView.configuration.userContentController.removeScriptMessageHandler(
+            forName: Self.runtimeMessageHandlerName
+        )
+        isRuntimeMessageHandlerInstalled = false
+        railModel.reset()
+    }
+
     /// Rebuilds the document-end user script and applies it to the currently
     /// loaded Discord document. Settings changes call this automatically.
     func refreshCSS() {
@@ -134,6 +208,10 @@ final class DiscordWebController: NSObject, ObservableObject {
             settings.$cssPreset.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             settings.$discordLayoutMode.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             settings.$customDiscordLayoutOptions.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            settings.$visualTheme.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            settings.$themeAccent.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            settings.$themeIntensity.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            settings.$themeColorScheme.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             settings.$customCSSEnabled.dropFirst().map { _ in () }.eraseToAnyPublisher()
         ]
 
@@ -156,6 +234,10 @@ final class DiscordWebController: NSObject, ObservableObject {
         refreshCSS(
             preset: settings.cssPreset,
             layoutOptions: settings.discordLayoutOptions,
+            visualTheme: settings.visualTheme,
+            themeAccent: settings.themeAccent,
+            themeIntensity: settings.themeIntensity,
+            themeColorScheme: settings.themeColorScheme,
             customCSS: settings.customCSS,
             customCSSEnabled: settings.customCSSEnabled,
             injectIntoCurrentPage: injectIntoCurrentPage
@@ -165,6 +247,10 @@ final class DiscordWebController: NSObject, ObservableObject {
     private func refreshCSS(
         preset: CSSPreset,
         layoutOptions: DiscordLayoutOptions,
+        visualTheme: DiscordVisualTheme,
+        themeAccent: SideCordAccent,
+        themeIntensity: Double,
+        themeColorScheme: ThemeColorScheme,
         customCSS: String,
         customCSSEnabled: Bool,
         injectIntoCurrentPage: Bool
@@ -173,13 +259,21 @@ final class DiscordWebController: NSObject, ObservableObject {
             preset: preset,
             compactPresetCSS: compactPresetCSS,
             layoutModifiersCSS: layoutModifiersCSS,
+            visualThemesCSS: visualThemesCSS,
             layoutOptions: layoutOptions,
             customCSS: customCSS,
             customCSSEnabled: customCSSEnabled
         )
+        let configuration = DiscordCSSComposer.runtimeConfiguration(
+            layoutOptions: layoutOptions,
+            visualTheme: visualTheme,
+            themeAccent: themeAccent,
+            themeIntensity: themeIntensity,
+            themeColorScheme: themeColorScheme
+        )
         let source = DiscordCSSComposer.userScriptSource(
             css: css,
-            rootAttributeNames: DiscordCSSComposer.rootAttributeNames(for: layoutOptions)
+            configuration: configuration
         )
         let contentController = webView.configuration.userContentController
         contentController.removeAllUserScripts()
@@ -198,9 +292,87 @@ final class DiscordWebController: NSObject, ObservableObject {
             return
         }
 
-        webView.evaluateJavaScript(source) { _, _ in
+        let generation = runtimeDocumentGeneration
+        webView.evaluateJavaScript(source) { [weak self] _, error in
             // A navigation may replace the document while this is executing.
             // The registered WKUserScript will apply the same CSS to the new one.
+            Task { @MainActor in
+                guard let self, self.runtimeDocumentGeneration == generation else { return }
+                if error == nil {
+                    self.runtimeActions.markReady()
+                    self.drainRuntimeActions()
+                } else {
+                    self.runtimeActions.markLoading()
+                }
+            }
+        }
+    }
+
+    private func performRuntimeAction(_ action: String) {
+        runtimeActions.enqueue(action)
+        drainRuntimeActions()
+    }
+
+    func activateRailItem(id: String) {
+        guard railModel.items.contains(where: { $0.id == id }),
+              let url = webView.url,
+              DiscordURLPolicy.isDiscordURL(url)
+        else { return }
+
+        let generation = runtimeDocumentGeneration
+        webView.evaluateJavaScript(
+            DiscordCSSComposer.railActivationSource(id: id)
+        ) { [weak self] result, error in
+            Task { @MainActor in
+                guard let self, self.runtimeDocumentGeneration == generation else { return }
+                guard error == nil, (result as? Bool) == true else {
+                    self.refreshCSS()
+                    return
+                }
+            }
+        }
+    }
+
+    private func setOptimisticDrawerState(_ isOpen: Bool) {
+        guard settings.discordLayoutOptions.navigationPresentation != .docked else { return }
+        drawerExpectationGeneration += 1
+        let generation = drawerExpectationGeneration
+        expectedDrawerState = isOpen
+        isNavigationDrawerOpen = isOpen
+
+        guard isOpen else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self,
+                  self.drawerExpectationGeneration == generation,
+                  self.expectedDrawerState == true
+            else { return }
+            self.expectedDrawerState = nil
+            self.isNavigationDrawerOpen = false
+        }
+    }
+
+    private func drainRuntimeActions() {
+        guard let url = webView.url,
+              DiscordURLPolicy.isDiscordURL(url),
+              let action = runtimeActions.beginNext()
+        else { return }
+        let generation = runtimeDocumentGeneration
+        webView.evaluateJavaScript(
+            DiscordCSSComposer.runtimeActionSource(action)
+        ) { [weak self] result, error in
+            Task { @MainActor in
+                guard let self, self.runtimeDocumentGeneration == generation else { return }
+                let succeeded = error == nil && (result as? Bool) == true
+                self.runtimeActions.complete(action, succeeded: succeeded)
+                if succeeded {
+                    self.drainRuntimeActions()
+                } else {
+                    // The page may have replaced its JavaScript world without a
+                    // navigation callback. Reinstall the runtime, then replay.
+                    self.refreshCSS()
+                }
+            }
         }
     }
 
@@ -250,6 +422,33 @@ final class DiscordWebController: NSObject, ObservableObject {
             return ""
         }
         return css
+    }
+}
+
+extension DiscordWebController: WKScriptMessageHandler {
+    func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        guard message.name == Self.runtimeMessageHandlerName,
+              message.webView === webView,
+              message.frameInfo.isMainFrame,
+              let sourceURL = message.frameInfo.request.url ?? webView.url,
+              DiscordURLPolicy.isDiscordURL(sourceURL),
+              let payload = message.body as? [String: Any],
+              let type = payload["type"] as? String
+        else { return }
+
+        if type == "rail", let items = payload["items"] {
+            railModel.receive(messageItems: items)
+            return
+        }
+
+        guard type == "drawer", let isOpen = payload["open"] as? Bool else { return }
+        if let expectedDrawerState, expectedDrawerState != isOpen { return }
+        drawerExpectationGeneration += 1
+        expectedDrawerState = nil
+        isNavigationDrawerOpen = isOpen
     }
 }
 
@@ -344,6 +543,12 @@ extension DiscordWebController: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        drawerExpectationGeneration += 1
+        expectedDrawerState = nil
+        isNavigationDrawerOpen = false
+        runtimeDocumentGeneration += 1
+        runtimeActions.markLoading()
+        railModel.reset()
         error = nil
         isLoading = true
         synchronizeNavigationState()
@@ -380,6 +585,9 @@ extension DiscordWebController: WKNavigationDelegate {
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        runtimeDocumentGeneration += 1
+        runtimeActions.markLoading()
+        railModel.reset()
         error = DiscordWebError(
             kind: .webContentProcess,
             message: "Discord's web content stopped unexpectedly."

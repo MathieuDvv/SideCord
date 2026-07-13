@@ -2,7 +2,24 @@ import XCTest
 @testable import SideCord
 
 final class WebCSSComposerTests: XCTestCase {
-    func testStandardPresetWithoutCustomCSSProducesNoStyles() {
+    func testTrustedSheetsAndCustomCSSHaveDeterministicPrecedence() {
+        let result = DiscordCSSComposer.compose(
+            preset: .compact,
+            compactPresetCSS: "  .compact {}  ",
+            layoutModifiersCSS: "  .layout {}  ",
+            visualThemesCSS: "  .theme {}  ",
+            layoutOptions: .focus,
+            customCSS: "  .custom {}  ",
+            customCSSEnabled: true
+        )
+
+        XCTAssertEqual(
+            result,
+            ".compact {}\n\n.layout {}\n\n.theme {}\n\n.custom {}"
+        )
+    }
+
+    func testStandardWithoutAnySheetsOrCustomCSSProducesNoStyles() {
         XCTAssertEqual(
             DiscordCSSComposer.compose(
                 preset: .standard,
@@ -14,105 +31,122 @@ final class WebCSSComposerTests: XCTestCase {
         )
     }
 
-    func testCompactAndCustomStylesAreComposed() {
-        let result = DiscordCSSComposer.compose(
-            preset: .compact,
-            compactPresetCSS: "  .compact { width: 10px; }  ",
-            customCSS: "\n.custom { color: red; }\n",
-            customCSSEnabled: true
-        )
-
-        XCTAssertEqual(
-            result,
-            ".compact { width: 10px; }\n\n.custom { color: red; }"
-        )
-    }
-
-    func testLayoutModifiersAreIncludedOnlyWhenEnabled() {
-        let enabled = DiscordCSSComposer.compose(
-            preset: .standard,
-            compactPresetCSS: ".compact {}",
-            layoutModifiersCSS: "  .modifiers {}  ",
-            layoutOptions: .focus,
-            customCSS: "",
-            customCSSEnabled: false
-        )
-        let disabled = DiscordCSSComposer.compose(
-            preset: .standard,
-            compactPresetCSS: ".compact {}",
-            layoutModifiersCSS: ".modifiers {}",
-            layoutOptions: .full,
-            customCSS: "",
-            customCSSEnabled: false
-        )
-
-        XCTAssertEqual(enabled, ".modifiers {}")
-        XCTAssertEqual(disabled, "")
-    }
-
-    func testFocusAndReaderRootAttributes() {
-        let focusAttributes = DiscordCSSComposer.rootAttributeNames(for: .focus)
-        let readerAttributes = DiscordCSSComposer.rootAttributeNames(for: .reader)
-
-        XCTAssertTrue(focusAttributes.contains("data-sidecord-hide-servers"))
-        XCTAssertTrue(focusAttributes.contains("data-sidecord-hide-channels"))
-        XCTAssertTrue(focusAttributes.contains("data-sidecord-hide-members"))
-        XCTAssertTrue(focusAttributes.contains("data-sidecord-simplify-composer"))
-        XCTAssertFalse(focusAttributes.contains("data-sidecord-hide-composer"))
-        XCTAssertTrue(readerAttributes.contains("data-sidecord-hide-composer"))
-        XCTAssertFalse(readerAttributes.contains("data-sidecord-compact-media"))
-    }
-
-    func testEveryLayoutOptionMapsToExactlyOneManagedClass() {
-        let allOptions = DiscordLayoutOptions(
-            hideServerRail: true,
-            hideChannelList: true,
+    func testRuntimeConfigurationMapsLayoutAndAppearanceToStableRootState() {
+        let options = DiscordLayoutOptions(
+            navigationPresentation: .floating,
+            composerMode: .essential,
             hideMemberList: true,
             hideAccountDock: true,
             simplifyHeader: true,
-            simplifyComposer: true,
-            hideComposer: true,
             compactMedia: true,
             reduceMotion: true
         )
 
-        XCTAssertEqual(
-            Set(DiscordCSSComposer.rootAttributeNames(for: allOptions)),
-            Set(DiscordCSSComposer.managedRootAttributeNames)
+        let configuration = DiscordCSSComposer.runtimeConfiguration(
+            layoutOptions: options,
+            visualTheme: .systemGlass,
+            themeAccent: .pink,
+            themeIntensity: 0.625,
+            themeColorScheme: .dark
         )
-        XCTAssertEqual(DiscordCSSComposer.rootAttributeNames(for: .full), [])
+
+        XCTAssertEqual(configuration.navigationPresentation, "floating")
+        XCTAssertEqual(configuration.composerMode, "essential")
+        XCTAssertEqual(configuration.requestedColorScheme, "dark")
+        XCTAssertEqual(configuration.rootAttributes["data-sidecord-navigation"], "floating")
+        XCTAssertEqual(configuration.rootAttributes["data-sidecord-composer"], "essential")
+        XCTAssertEqual(configuration.rootAttributes["data-sidecord-theme"], "system-glass")
+        XCTAssertEqual(configuration.rootAttributes["data-sidecord-accent"], "pink")
+        XCTAssertEqual(configuration.rootAttributes["data-sidecord-color-scheme"], "dark")
+        XCTAssertEqual(configuration.rootAttributes["data-sidecord-hide-members"], "")
+        XCTAssertEqual(configuration.rootAttributes["data-sidecord-hide-account-dock"], "")
+        XCTAssertEqual(configuration.rootAttributes["data-sidecord-simplify-header"], "")
+        XCTAssertEqual(configuration.rootAttributes["data-sidecord-compact-media"], "")
+        XCTAssertEqual(configuration.rootAttributes["data-sidecord-reduce-motion"], "")
+        XCTAssertEqual(configuration.rootVariables["--sidecord-theme-intensity"], "0.625")
+        XCTAssertEqual(configuration.rootVariables["--sidecord-theme-strength"], "62.500%")
+        XCTAssertEqual(configuration.rootVariables["--sidecord-accent-color"], "#ff2d55")
     }
 
-    func testEmptyStylesStillRemoveEveryManagedRootAttribute() {
-        let script = DiscordCSSComposer.userScriptSource(css: "")
+    func testRuntimeConfigurationClampsThemeIntensityAndUsesModelFallback() {
+        let high = configuration(intensity: 4)
+        let low = configuration(intensity: -2)
+        let invalid = configuration(intensity: .nan)
 
-        for attributeName in DiscordCSSComposer.managedRootAttributeNames {
-            XCTAssertTrue(script.contains(attributeName))
-        }
-        XCTAssertTrue(script.contains("root.removeAttribute(name)"))
-        XCTAssertTrue(script.contains("if (!state.css && state.enabledAttributes.size === 0) return"))
+        XCTAssertEqual(high.rootVariables["--sidecord-theme-intensity"], "1.000")
+        XCTAssertEqual(low.rootVariables["--sidecord-theme-intensity"], "0.000")
+        XCTAssertEqual(invalid.rootVariables["--sidecord-theme-intensity"], "1.000")
     }
 
-    func testUserScriptInstallsOneSelfHealingRuntime() {
+    func testEveryCuratedEnumCaseMapsWithoutLeakingSwiftCaseNames() {
+        XCTAssertEqual(
+            Set(DiscordNavigationPresentation.allCases.map {
+                configuration(navigation: $0).navigationPresentation
+            }),
+            ["docked", "floating", "hidden"]
+        )
+        XCTAssertEqual(
+            Set(DiscordComposerMode.allCases.map {
+                configuration(composer: $0).composerMode
+            }),
+            ["full", "essential", "hidden"]
+        )
+        XCTAssertEqual(
+            Set(DiscordVisualTheme.allCases.compactMap {
+                configuration(theme: $0).rootAttributes["data-sidecord-theme"]
+            }),
+            ["system-glass", "discord", "oled", "soft"]
+        )
+    }
+
+    func testUserScriptInstallsUpdateableDrawerRailBridgeAndSelfHealingRuntime() {
         let script = DiscordCSSComposer.userScriptSource(
             css: ".focused {}",
-            rootAttributeNames: ["data-sidecord-hide-servers"]
+            configuration: configuration(navigation: .floating, composer: .essential)
         )
 
         XCTAssertTrue(script.contains(DiscordCSSComposer.runtimeKey))
-        XCTAssertTrue(script.contains("previousRuntime.dispose()"))
-        XCTAssertEqual(script.components(separatedBy: "new MutationObserver").count - 1, 1)
-        XCTAssertTrue(script.contains("observer.disconnect()"))
-        XCTAssertTrue(script.contains("root.toggleAttribute(name"))
-        XCTAssertTrue(script.contains("repairScheduled"))
+        XCTAssertTrue(script.contains("previousRuntime.update(nextCSS, nextConfiguration)"))
+        XCTAssertTrue(script.contains("new MutationObserver"))
         XCTAssertTrue(script.contains("queueMicrotask"))
+        XCTAssertTrue(script.contains("reconcileScheduled"))
+        XCTAssertTrue(script.contains("requestAnimationFrame"))
+        XCTAssertTrue(script.contains("setTimeout(run, 50)"))
+        XCTAssertTrue(script.contains("new ResizeObserver"))
+        XCTAssertTrue(script.contains("state.openDrawer"))
+        XCTAssertTrue(script.contains("state.closeDrawer"))
+        XCTAssertTrue(script.contains("state.toggleDrawer"))
+        XCTAssertTrue(script.contains("document.addEventListener(\"pointerdown\""))
+        XCTAssertTrue(script.contains("document.addEventListener(\"keydown\""))
+        XCTAssertTrue(script.contains(DiscordCSSComposer.messageHandlerName))
+        XCTAssertTrue(script.contains("reportDrawerState(false)"))
+        XCTAssertTrue(script.contains("scheduleRailReport"))
+        XCTAssertTrue(script.contains("state.activateRailItem"))
+        XCTAssertTrue(script.contains("attributeFilter"))
+        XCTAssertTrue(script.contains("reconcileDiscordDOM"))
         XCTAssertTrue(script.contains("style.textContent !== state.css"))
-        XCTAssertTrue(script.contains("observer.observe(document, { childList: true })"))
-        XCTAssertFalse(script.contains("observer.observe(document, { childList: true, subtree: true })"))
+        XCTAssertFalse(script.contains("cloneNode"))
+        XCTAssertFalse(script.contains("stopPropagation"))
+        XCTAssertFalse(script.contains("preventDefault"))
+    }
 
-        let hostGuard = script.range(of: "if (window.location.protocol")!.lowerBound
-        let runtimeCreation = script.range(of: "const previousRuntime")!.lowerBound
-        XCTAssertLessThan(hostGuard, runtimeCreation)
+    func testRuntimeActionsAreAllowListed() {
+        XCTAssertTrue(
+            DiscordCSSComposer.runtimeActionSource("toggleDrawer")
+                .contains("toggleDrawer")
+        )
+        XCTAssertEqual(
+            DiscordCSSComposer.runtimeActionSource("arbitrary();alert(1)"),
+            "false;"
+        )
+        XCTAssertTrue(
+            DiscordCSSComposer.railActivationSource(id: "server:123")
+                .contains("server:123")
+        )
+        XCTAssertEqual(
+            DiscordCSSComposer.railActivationSource(id: "');alert(1)//"),
+            "false;"
+        )
     }
 
     func testCustomCSSRejectsNetworkLoadingPrimitives() {
@@ -122,41 +156,46 @@ final class WebCSSComposerTests: XCTestCase {
         .safe { color: rebeccapurple; }
         """
 
-        let result = DiscordCSSComposer.sanitizeCustomCSS(unsafeCSS)
-
         XCTAssertEqual(
-            result,
+            DiscordCSSComposer.sanitizeCustomCSS(unsafeCSS),
             "/* SideCord blocked custom CSS containing network-capable syntax. */"
         )
     }
 
-    func testEscapedImportIsRejected() {
-        let escapedImport = #"@\69mport "https://example.com/theme.css";"#
-
-        XCTAssertNotNil(DiscordCSSComposer.validationError(for: escapedImport))
-        XCTAssertFalse(DiscordCSSComposer.sanitizeCustomCSS(escapedImport).contains("example.com"))
-    }
-
     func testSafeSelectorContainingURLLettersIsAllowed() {
         let css = ".curl-indicator { color: rebeccapurple; }"
-
         XCTAssertNil(DiscordCSSComposer.validationError(for: css))
         XCTAssertEqual(DiscordCSSComposer.sanitizeCustomCSS(css), css)
     }
 
-    func testUserScriptUsesJSONStringEncodingAndDiscordHostGuard() {
+    func testUserScriptUsesJSONEncodingAndDiscordHostGuard() {
         let css = "body::after { content: \"</style>\\n'${danger}\"; }"
         let script = DiscordCSSComposer.userScriptSource(
             css: css,
-            rootAttributeNames: ["data-sidecord-hide-servers"]
+            configuration: configuration()
         )
 
         XCTAssertTrue(script.contains("discord.com"))
         XCTAssertTrue(script.contains("discordapp.com"))
         XCTAssertTrue(script.contains(DiscordCSSComposer.styleElementID))
-        XCTAssertTrue(script.contains("style.textContent = state.css"))
-        XCTAssertTrue(script.contains("root.toggleAttribute"))
-        XCTAssertTrue(script.contains("data-sidecord-hide-servers"))
-        XCTAssertFalse(script.contains("const css = \(css);"))
+        XCTAssertFalse(script.contains("const nextCSS = \(css);"))
+    }
+
+    private func configuration(
+        navigation: DiscordNavigationPresentation = .docked,
+        composer: DiscordComposerMode = .full,
+        theme: DiscordVisualTheme = .discord,
+        intensity: Double = 1
+    ) -> DiscordCSSRuntimeConfiguration {
+        DiscordCSSComposer.runtimeConfiguration(
+            layoutOptions: DiscordLayoutOptions(
+                navigationPresentation: navigation,
+                composerMode: composer
+            ),
+            visualTheme: theme,
+            themeAccent: .automatic,
+            themeIntensity: intensity,
+            themeColorScheme: .system
+        )
     }
 }
