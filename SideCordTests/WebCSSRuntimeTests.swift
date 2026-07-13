@@ -291,6 +291,453 @@ final class WebCSSRuntimeTests: XCTestCase {
         _ = navigationWaiter
     }
 
+    func testNotificationBridgeConnectsDiscordWhenWebPermissionIsUnavailable() async throws {
+        let recorder = RuntimeMessageRecorder()
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController.add(
+            recorder,
+            name: DiscordCSSComposer.messageHandlerName
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: """
+                (() => {
+                  class FixtureNotification {
+                    static permission = 'default';
+                    static requestPermission(callback) {
+                      window.fixtureOriginalRequestCount += 1;
+                      if (typeof callback === 'function') callback('denied');
+                      return Promise.resolve('denied');
+                    }
+                    constructor(title) {
+                      window.fixtureOriginalConstructionCount += 1;
+                      if (FixtureNotification.permission !== 'granted') {
+                        throw new Error('Web notification permission unavailable');
+                      }
+                      this.title = title;
+                    }
+                  }
+                  window.fixtureOriginalConstructionCount = 0;
+                  window.fixtureOriginalRequestCount = 0;
+                  window.fixtureShowCount = 0;
+                  window.fixtureCloseCount = 0;
+                  window.fixturePermissionCallback = null;
+                  window.Notification = FixtureNotification;
+                  window.fixtureOriginalNotification = FixtureNotification;
+                })();
+                """,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: DiscordCSSComposer.notificationBridgeUserScriptSource(
+                    isEnabled: false
+                ),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let loaded = expectation(description: "Permission-gated notification fixture loaded")
+        let navigationWaiter = RuntimeNavigationWaiter { loaded.fulfill() }
+        webView.navigationDelegate = navigationWaiter
+        webView.loadHTMLString(
+            "<!doctype html><html><body></body></html>",
+            baseURL: URL(string: "https://discord.com/app")!
+        )
+        await fulfillment(of: [loaded], timeout: 5)
+
+        let disabledState = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const DiscordNotification = Notification;
+              window.fixtureDiscordNotification = DiscordNotification;
+              let constructionThrew = false;
+              try {
+                new DiscordNotification('disabled notification');
+              } catch (_) {
+                constructionThrew = true;
+              }
+              DiscordNotification.requestPermission(permission => {
+                window.fixturePermissionCallback = permission;
+              });
+              const bridge = window['\(DiscordCSSComposer.notificationBridgeKey)'];
+              return {
+                permission: DiscordNotification.permission,
+                enabled: bridge.enabled,
+                captures: bridge.capturesPageNotifications,
+                usesVirtualPermission: bridge.usesVirtualPermission,
+                constructionThrew,
+                constructionCount: window.fixtureOriginalConstructionCount,
+                requestCount: window.fixtureOriginalRequestCount,
+                permissionCallback: window.fixturePermissionCallback
+              };
+            })()
+            """
+        ) as! [String: Any]
+        XCTAssertEqual(disabledState["permission"] as? String, "default")
+        XCTAssertEqual(disabledState["enabled"] as? Bool, false)
+        XCTAssertEqual(disabledState["captures"] as? Bool, true)
+        XCTAssertEqual(disabledState["usesVirtualPermission"] as? Bool, true)
+        XCTAssertEqual(disabledState["constructionThrew"] as? Bool, true)
+        XCTAssertEqual(disabledState["constructionCount"] as? Int, 1)
+        XCTAssertEqual(disabledState["requestCount"] as? Int, 1)
+        XCTAssertEqual(disabledState["permissionCallback"] as? String, "denied")
+        XCTAssertTrue(recorder.notificationPayloads.isEmpty)
+
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.notificationBridgeUserScriptSource(isEnabled: true)
+        )
+        let enabledState = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const DiscordNotification = window.fixtureDiscordNotification;
+              let instance = null;
+              if (DiscordNotification.permission === 'granted') {
+                instance = new DiscordNotification(
+                  'private Discord title',
+                  {
+                    body: 'private Discord body',
+                    tag: 'message',
+                    navigate: 'https://discord.com/channels/1/2',
+                    vibrate: [120, 40, 120]
+                  }
+                );
+                instance.onshow = () => { window.fixtureShowCount += 1; };
+                instance.onclose = () => { window.fixtureCloseCount += 1; };
+                window.fixtureVirtualNotification = instance;
+              }
+              const bridge = window['\(DiscordCSSComposer.notificationBridgeKey)'];
+              return {
+                permission: DiscordNotification.permission,
+                enabled: bridge.enabled,
+                cachedConstructorPreserved: DiscordNotification === Notification,
+                isOriginalInstance:
+                  instance instanceof window.fixtureOriginalNotification,
+                constructionCount: window.fixtureOriginalConstructionCount,
+                navigate: instance.navigate,
+                vibrate: [...instance.vibrate],
+                vibrateIsFrozen: Object.isFrozen(instance.vibrate),
+                silentIsNull: instance.silent === null
+              };
+            })()
+            """
+        ) as! [String: Any]
+        try await waitForRuntime()
+
+        XCTAssertEqual(enabledState["permission"] as? String, "granted")
+        XCTAssertEqual(enabledState["enabled"] as? Bool, true)
+        XCTAssertEqual(enabledState["cachedConstructorPreserved"] as? Bool, true)
+        XCTAssertEqual(enabledState["isOriginalInstance"] as? Bool, true)
+        XCTAssertEqual(enabledState["constructionCount"] as? Int, 1)
+        XCTAssertEqual(
+            enabledState["navigate"] as? String,
+            "https://discord.com/channels/1/2"
+        )
+        XCTAssertEqual(enabledState["vibrate"] as? [Int], [120, 40, 120])
+        XCTAssertEqual(enabledState["vibrateIsFrozen"] as? Bool, true)
+        XCTAssertEqual(enabledState["silentIsNull"] as? Bool, true)
+        XCTAssertEqual(recorder.notificationPayloads.count, 1)
+        XCTAssertEqual(Set(recorder.notificationPayloads[0].keys), ["type"])
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              window.fixtureDiscordNotification.requestPermission(permission => {
+                window.fixturePermissionCallback = permission;
+              });
+              window.fixtureVirtualNotification.close();
+            })()
+            """
+        )
+        try await waitForRuntime()
+        let lifecycleState = try await webView.evaluateJavaScript(
+            """
+            ({
+              showCount: window.fixtureShowCount,
+              closeCount: window.fixtureCloseCount,
+              permissionCallback: window.fixturePermissionCallback,
+              originalRequestCount: window.fixtureOriginalRequestCount
+            })
+            """
+        ) as! [String: Any]
+        XCTAssertEqual(lifecycleState["showCount"] as? Int, 1)
+        XCTAssertEqual(lifecycleState["closeCount"] as? Int, 1)
+        XCTAssertEqual(lifecycleState["permissionCallback"] as? String, "granted")
+        XCTAssertEqual(lifecycleState["originalRequestCount"] as? Int, 1)
+
+        let permissionRefreshState = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const DiscordNotification = window.fixtureDiscordNotification;
+              window.fixtureOriginalNotification.permission = 'granted';
+              const originalInstance = new DiscordNotification('real permission');
+              window.fixtureOriginalNotification.permission = 'default';
+              const virtualInstance = new DiscordNotification('virtual permission');
+              virtualInstance.close();
+              const bridge = window['\(DiscordCSSComposer.notificationBridgeKey)'];
+              return {
+                originalInstance:
+                  originalInstance instanceof window.fixtureOriginalNotification,
+                virtualInstance:
+                  virtualInstance instanceof window.fixtureOriginalNotification,
+                constructionCount: window.fixtureOriginalConstructionCount,
+                permission: DiscordNotification.permission,
+                usesVirtualPermission: bridge.usesVirtualPermission
+              };
+            })()
+            """
+        ) as! [String: Any]
+        try await waitForRuntime()
+        XCTAssertEqual(permissionRefreshState["originalInstance"] as? Bool, true)
+        XCTAssertEqual(permissionRefreshState["virtualInstance"] as? Bool, true)
+        XCTAssertEqual(permissionRefreshState["constructionCount"] as? Int, 2)
+        XCTAssertEqual(permissionRefreshState["permission"] as? String, "granted")
+        XCTAssertEqual(permissionRefreshState["usesVirtualPermission"] as? Bool, true)
+        XCTAssertEqual(recorder.notificationPayloads.count, 3)
+
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.notificationBridgeUserScriptSource(isEnabled: false)
+        )
+        let stateAfterDisabling = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const DiscordNotification = window.fixtureDiscordNotification;
+              let constructionThrew = false;
+              try {
+                new DiscordNotification('disabled again');
+              } catch (_) {
+                constructionThrew = true;
+              }
+              DiscordNotification.requestPermission(permission => {
+                window.fixturePermissionCallback = permission;
+              });
+              return {
+                permission: DiscordNotification.permission,
+                cachedConstructorPreserved: DiscordNotification === Notification,
+                constructionThrew,
+                constructionCount: window.fixtureOriginalConstructionCount,
+                requestCount: window.fixtureOriginalRequestCount,
+                permissionCallback: window.fixturePermissionCallback
+              };
+            })()
+            """
+        ) as! [String: Any]
+        XCTAssertEqual(stateAfterDisabling["permission"] as? String, "default")
+        XCTAssertEqual(stateAfterDisabling["cachedConstructorPreserved"] as? Bool, true)
+        XCTAssertEqual(stateAfterDisabling["constructionThrew"] as? Bool, true)
+        XCTAssertEqual(stateAfterDisabling["constructionCount"] as? Int, 3)
+        XCTAssertEqual(stateAfterDisabling["requestCount"] as? Int, 2)
+        XCTAssertEqual(stateAfterDisabling["permissionCallback"] as? String, "denied")
+        XCTAssertEqual(recorder.notificationPayloads.count, 3)
+        _ = navigationWaiter
+    }
+
+    func testDisabledNotificationBridgePreservesMissingWebAPISemantics() async throws {
+        let recorder = RuntimeMessageRecorder()
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController.add(
+            recorder,
+            name: DiscordCSSComposer.messageHandlerName
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: """
+                (() => {
+                  Object.defineProperty(window, 'Notification', {
+                    configurable: true,
+                    writable: true,
+                    value: undefined
+                  });
+                  window.fixtureMissingPermissionCallback = null;
+                })();
+                """,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: DiscordCSSComposer.notificationBridgeUserScriptSource(
+                    isEnabled: false
+                ),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let loaded = expectation(description: "Missing Notification API fixture loaded")
+        let navigationWaiter = RuntimeNavigationWaiter { loaded.fulfill() }
+        webView.navigationDelegate = navigationWaiter
+        webView.loadHTMLString(
+            "<!doctype html><html><body></body></html>",
+            baseURL: URL(string: "https://discord.com/app")!
+        )
+        await fulfillment(of: [loaded], timeout: 5)
+
+        let disabledState = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const DiscordNotification = Notification;
+              window.fixtureMissingDiscordNotification = DiscordNotification;
+              let errorName = null;
+              try {
+                new DiscordNotification('disabled notification');
+              } catch (error) {
+                errorName = error.name;
+              }
+              DiscordNotification.requestPermission(permission => {
+                window.fixtureMissingPermissionCallback = permission;
+              });
+              const bridge = window['\(DiscordCSSComposer.notificationBridgeKey)'];
+              return {
+                notificationType: typeof DiscordNotification,
+                permission: DiscordNotification.permission,
+                requestPermissionType:
+                  typeof DiscordNotification.requestPermission,
+                errorName,
+                originalNotificationIsNull:
+                  bridge.originalNotification === null
+              };
+            })()
+            """
+        ) as! [String: Any]
+        try await waitForRuntime()
+        let disabledCallback = try await webView.evaluateJavaScript(
+            "window.fixtureMissingPermissionCallback"
+        ) as! String
+
+        XCTAssertEqual(disabledState["notificationType"] as? String, "function")
+        XCTAssertEqual(disabledState["permission"] as? String, "default")
+        XCTAssertEqual(disabledState["requestPermissionType"] as? String, "function")
+        XCTAssertEqual(disabledState["errorName"] as? String, "NotAllowedError")
+        XCTAssertEqual(disabledState["originalNotificationIsNull"] as? Bool, true)
+        XCTAssertEqual(disabledCallback, "default")
+        XCTAssertTrue(recorder.notificationPayloads.isEmpty)
+
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.notificationBridgeUserScriptSource(isEnabled: true)
+        )
+        let enabledState = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const DiscordNotification = window.fixtureMissingDiscordNotification;
+              const instance = new DiscordNotification(
+                'private missing-API title',
+                { body: 'private missing-API body' }
+              );
+              instance.close();
+              return {
+                permission: DiscordNotification.permission,
+                cachedConstructorPreserved: DiscordNotification === Notification
+              };
+            })()
+            """
+        ) as! [String: Any]
+        try await waitForRuntime()
+
+        XCTAssertEqual(enabledState["permission"] as? String, "granted")
+        XCTAssertEqual(enabledState["cachedConstructorPreserved"] as? Bool, true)
+        XCTAssertEqual(recorder.notificationPayloads.count, 1)
+        XCTAssertEqual(Set(recorder.notificationPayloads[0].keys), ["type"])
+
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.notificationBridgeUserScriptSource(isEnabled: false)
+        )
+        let permissionAfterDisabling = try await webView.evaluateJavaScript(
+            "window.fixtureMissingDiscordNotification.permission"
+        ) as! String
+        XCTAssertEqual(permissionAfterDisabling, "default")
+        XCTAssertEqual(recorder.notificationPayloads.count, 1)
+        _ = navigationWaiter
+    }
+
+    func testNotificationBridgeInstallsOnRealWKWebViewNotificationSurface() async throws {
+        let recorder = RuntimeMessageRecorder()
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        configuration.userContentController.add(
+            recorder,
+            name: DiscordCSSComposer.messageHandlerName
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: """
+                (() => {
+                  window.fixturePreBridgeNotificationType = typeof window.Notification;
+                  window.fixturePreBridgeNotificationPermission =
+                    typeof window.Notification?.permission === 'string'
+                      ? window.Notification.permission
+                      : 'unavailable';
+                })();
+                """,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: DiscordCSSComposer.notificationBridgeUserScriptSource(),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let loaded = expectation(description: "Real WK notification surface loaded")
+        let navigationWaiter = RuntimeNavigationWaiter { loaded.fulfill() }
+        webView.navigationDelegate = navigationWaiter
+        webView.loadHTMLString(
+            "<!doctype html><html><body></body></html>",
+            baseURL: URL(string: "https://discord.com/app")!
+        )
+        await fulfillment(of: [loaded], timeout: 5)
+
+        let state = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const bridge = window['\(DiscordCSSComposer.notificationBridgeKey)'];
+              const instance = new Notification(
+                'private WK title',
+                { body: 'private WK body' }
+              );
+              instance.close();
+              return {
+                notificationType: typeof Notification,
+                permission: Notification.permission,
+                captures: bridge.capturesPageNotifications,
+                usesVirtualPermission: bridge.usesVirtualPermission,
+                preBridgeType: window.fixturePreBridgeNotificationType,
+                preBridgePermission: window.fixturePreBridgeNotificationPermission,
+                bridgeOriginalPermission: bridge.originalPermission,
+                originalNotificationIsNull: bridge.originalNotification === null
+              };
+            })()
+            """
+        ) as! [String: Any]
+        try await waitForRuntime()
+
+        XCTAssertEqual(state["notificationType"] as? String, "function")
+        XCTAssertEqual(state["permission"] as? String, "granted")
+        XCTAssertEqual(state["captures"] as? Bool, true)
+        XCTAssertEqual(state["usesVirtualPermission"] as? Bool, true)
+        XCTAssertEqual(
+            state["bridgeOriginalPermission"] as? String,
+            state["preBridgePermission"] as? String
+        )
+        XCTAssertEqual(
+            state["originalNotificationIsNull"] as? Bool,
+            state["preBridgeType"] as? String != "function"
+        )
+        XCTAssertEqual(recorder.notificationPayloads.count, 1)
+        XCTAssertEqual(Set(recorder.notificationPayloads[0].keys), ["type"])
+        _ = navigationWaiter
+    }
+
     func testMessageActivityBridgeIgnoresBaselineAndHistoryButReportsRepeatedAppends() async throws {
         let recorder = RuntimeMessageRecorder()
         let (webView, navigationWaiter) = try await loadFixture(messageRecorder: recorder)
@@ -466,6 +913,94 @@ final class WebCSSRuntimeTests: XCTestCase {
         )
         try await waitForRuntime()
         XCTAssertEqual(recorder.notificationPayloads.count, 4)
+    }
+
+    func testMessageFallbackDefersToTheLiveNotificationBridge() async throws {
+        let recorder = RuntimeMessageRecorder()
+        let (webView, navigationWaiter) = try await loadFixture(
+            messageRecorder: recorder,
+            notificationBridgeEnabled: true
+        )
+        _ = navigationWaiter
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const timeline = document.createElement('ol');
+              timeline.id = 'message-timeline';
+              timeline.setAttribute('data-list-id', 'chat-messages');
+              const baseline = document.createElement('li');
+              baseline.id = 'chat-messages-1-100';
+              timeline.append(baseline);
+              document.getElementById('messages').prepend(timeline);
+            })()
+            """
+        )
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.userScriptSource(
+                css: try runtimeCSS(customCSS: ""),
+                configuration: makeConfiguration(navigation: .docked, composer: .full)
+            )
+        )
+        let messageTrackingIsArmed = try await waitForMessageTracking(in: webView)
+        XCTAssertTrue(messageTrackingIsArmed)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const message = document.createElement('li');
+              message.id = 'chat-messages-1-101';
+              message.className = 'mentioned_fixture';
+              document.getElementById('message-timeline').append(message);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertTrue(recorder.notificationPayloads.isEmpty)
+
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.notificationBridgeUserScriptSource(isEnabled: false)
+        )
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const message = document.createElement('li');
+              message.id = 'chat-messages-1-102';
+              message.className = 'mentioned_fixture';
+              document.getElementById('message-timeline').append(message);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertTrue(recorder.notificationPayloads.isEmpty)
+
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.notificationBridgeUserScriptSource(isEnabled: true)
+        )
+        let bridgeWasReplaced = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              window.Notification = function DiscordReplacementNotification() {};
+              return window.Notification !==
+                window['\(DiscordCSSComposer.notificationBridgeKey)'].notificationProxy;
+            })()
+            """
+        ) as! Bool
+        XCTAssertTrue(bridgeWasReplaced)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const message = document.createElement('li');
+              message.id = 'chat-messages-1-103';
+              message.className = 'mentioned_fixture';
+              document.getElementById('message-timeline').append(message);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 1)
+        XCTAssertEqual(Set(recorder.notificationPayloads[0].keys), ["type"])
     }
 
     func testFloatingRailBridgeUsesLiveDiscordNodesAndSurvivesRerenders() async throws {
@@ -677,7 +1212,7 @@ final class WebCSSRuntimeTests: XCTestCase {
             XCTAssertNotEqual(fullVisibility[control], "none", control)
         }
         let runtimeStillExists = try await webView.evaluateJavaScript(
-            "window['\(DiscordCSSComposer.runtimeKey)']?.version === 5"
+            "window['\(DiscordCSSComposer.runtimeKey)']?.version === 6"
         ) as! Bool
         XCTAssertTrue(runtimeStillExists)
 
@@ -1014,13 +1549,25 @@ final class WebCSSRuntimeTests: XCTestCase {
     private func loadFixture(
         messageRecorder: RuntimeMessageRecorder? = nil,
         html: String? = nil,
-        frame: CGRect = CGRect(x: 0, y: 0, width: 800, height: 700)
+        frame: CGRect = CGRect(x: 0, y: 0, width: 800, height: 700),
+        notificationBridgeEnabled: Bool? = nil
     ) async throws -> (WKWebView, RuntimeNavigationWaiter) {
         let configuration = WKWebViewConfiguration()
         if let messageRecorder {
             configuration.userContentController.add(
                 messageRecorder,
                 name: DiscordCSSComposer.messageHandlerName
+            )
+        }
+        if let notificationBridgeEnabled {
+            configuration.userContentController.addUserScript(
+                WKUserScript(
+                    source: DiscordCSSComposer.notificationBridgeUserScriptSource(
+                        isEnabled: notificationBridgeEnabled
+                    ),
+                    injectionTime: .atDocumentStart,
+                    forMainFrameOnly: true
+                )
             )
         }
         let webView = WKWebView(

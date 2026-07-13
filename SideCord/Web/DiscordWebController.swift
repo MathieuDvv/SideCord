@@ -222,6 +222,7 @@ final class DiscordWebController: NSObject, ObservableObject {
             settings.$themeAccent.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             settings.$themeIntensity.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             settings.$themeColorScheme.dropFirst().map { _ in () }.eraseToAnyPublisher(),
+            settings.$notificationGlowEnabled.dropFirst().map { _ in () }.eraseToAnyPublisher(),
             settings.$customCSSEnabled.dropFirst().map { _ in () }.eraseToAnyPublisher()
         ]
 
@@ -248,6 +249,7 @@ final class DiscordWebController: NSObject, ObservableObject {
             themeAccent: settings.themeAccent,
             themeIntensity: settings.themeIntensity,
             themeColorScheme: settings.themeColorScheme,
+            notificationGlowEnabled: settings.notificationGlowEnabled,
             customCSS: settings.customCSS,
             customCSSEnabled: settings.customCSSEnabled,
             injectIntoCurrentPage: injectIntoCurrentPage
@@ -261,6 +263,7 @@ final class DiscordWebController: NSObject, ObservableObject {
         themeAccent: SideCordAccent,
         themeIntensity: Double,
         themeColorScheme: ThemeColorScheme,
+        notificationGlowEnabled: Bool,
         customCSS: String,
         customCSSEnabled: Bool,
         injectIntoCurrentPage: Bool
@@ -291,11 +294,13 @@ final class DiscordWebController: NSObject, ObservableObject {
             css: css,
             configuration: configuration
         )
+        let notificationBridgeSource = DiscordCSSComposer
+            .notificationBridgeUserScriptSource(isEnabled: notificationGlowEnabled)
         let contentController = webView.configuration.userContentController
         contentController.removeAllUserScripts()
         contentController.addUserScript(
             WKUserScript(
-                source: DiscordCSSComposer.notificationBridgeUserScriptSource(),
+                source: notificationBridgeSource,
                 injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
             )
@@ -316,7 +321,8 @@ final class DiscordWebController: NSObject, ObservableObject {
         }
 
         let generation = runtimeDocumentGeneration
-        webView.evaluateJavaScript(source) { [weak self] _, error in
+        let liveSource = notificationBridgeSource + "\n" + source
+        webView.evaluateJavaScript(liveSource) { [weak self] _, error in
             // A navigation may replace the document while this is executing.
             // The registered WKUserScript will apply the same CSS to the new one.
             Task { @MainActor in

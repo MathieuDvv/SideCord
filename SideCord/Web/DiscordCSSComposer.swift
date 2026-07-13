@@ -12,7 +12,7 @@ struct DiscordCSSRuntimeConfiguration: Encodable, Equatable, Sendable {
 enum DiscordCSSComposer {
     static let styleElementID = "sidecord-injected-css"
     static let runtimeKey = "__sidecordWebRuntime_v3__"
-    static let notificationBridgeKey = "__sidecordNotificationBridge_v1__"
+    static let notificationBridgeKey = "__sidecordNotificationBridge_v2__"
     static let messageHandlerName = "sidecordRuntime"
 
     static let managedConfigurationAttributeNames = [
@@ -160,6 +160,10 @@ enum DiscordCSSComposer {
         let encodedManagedAttributes = javascriptLiteral(managedRootAttributeNames, fallback: "[]")
         let encodedManagedVariables = javascriptLiteral(managedRootVariableNames, fallback: "[]")
         let encodedMessageHandlerName = javascriptLiteral(messageHandlerName, fallback: "\"\"")
+        let encodedNotificationBridgeKey = javascriptLiteral(
+            notificationBridgeKey,
+            fallback: "\"\""
+        )
 
         return """
         (() => {
@@ -177,9 +181,10 @@ enum DiscordCSSComposer {
           const managedAttributes = \(encodedManagedAttributes);
           const managedVariables = \(encodedManagedVariables);
           const messageHandlerName = \(encodedMessageHandlerName);
+          const notificationBridgeKey = \(encodedNotificationBridgeKey);
           const previousRuntime = window[runtimeKey];
 
-          if (previousRuntime && previousRuntime.version === 5 &&
+          if (previousRuntime && previousRuntime.version === 6 &&
               typeof previousRuntime.update === "function") {
             previousRuntime.update(nextCSS, nextConfiguration);
             return;
@@ -212,7 +217,7 @@ enum DiscordCSSComposer {
           };
 
           const state = {
-            version: 5,
+            version: 6,
             css: nextCSS,
             configuration: nextConfiguration,
             drawerOpen: false,
@@ -437,10 +442,15 @@ enum DiscordCSSComposer {
             );
           };
           const timelineFallbackIsAllowed = descriptors => {
-            const hasExactPageNotifications =
-              typeof window.Notification === "function" &&
-              window.Notification.permission === "granted";
-            return !hasExactPageNotifications &&
+            const notificationBridge = window[notificationBridgeKey];
+            if (notificationBridge && notificationBridge.enabled !== true) {
+              return false;
+            }
+            const bridgeCapturesPageNotifications =
+              notificationBridge?.enabled === true &&
+              notificationBridge?.capturesPageNotifications === true &&
+              window.Notification === notificationBridge?.notificationProxy;
+            return !bridgeCapturesPageNotifications &&
               !currentChannelIsMuted() &&
               descriptors.some(messageHasNotificationSemantic);
           };
@@ -1102,15 +1112,16 @@ enum DiscordCSSComposer {
         """
     }
 
-    /// Runs before Discord's application bundle so successful page notifications
-    /// and notifications exposed by service-worker registrations can become
-    /// content-free native attention events. Notification arguments never leave
-    /// the page.
-    static func notificationBridgeUserScriptSource() -> String {
+    /// Runs before Discord's application bundle and lets SideCord's glow act as
+    /// the notification surface when WebKit cannot grant HTML notification
+    /// permission. Discord still decides which events qualify; notification
+    /// arguments never leave the page.
+    static func notificationBridgeUserScriptSource(isEnabled: Bool = true) -> String {
         let encodedMessageHandlerName = javascriptLiteral(
             messageHandlerName,
             fallback: "\"\""
         )
+        let encodedEnabled = isEnabled ? "true" : "false"
         return """
         (() => {
           const host = window.location.hostname.toLowerCase().replace(/\\.+$/, "");
@@ -1121,7 +1132,13 @@ enum DiscordCSSComposer {
           if (window.location.protocol !== "https:" || !isDiscordHost) return;
 
           const bridgeKey = "\(notificationBridgeKey)";
-          if (window[bridgeKey]) return;
+          const nextEnabled = \(encodedEnabled);
+          const previousBridge = window[bridgeKey];
+          if (previousBridge && typeof previousBridge.update === "function") {
+            previousBridge.update(nextEnabled);
+            return;
+          }
+          if (previousBridge) return;
 
           const messageHandlerName = \(encodedMessageHandlerName);
           const postNotificationEvent = () => {
@@ -1135,9 +1152,18 @@ enum DiscordCSSComposer {
           const bridge = {
             originalNotification: null,
             notificationProxy: null,
+            capturesPageNotifications: false,
+            enabled: nextEnabled,
+            usesVirtualPermission: false,
+            originalPermission: "unavailable",
             serviceWorkerNotificationsBaselined: false,
             knownServiceWorkerNotificationsByScope: new Map(),
-            serviceWorkerPollTimer: 0
+            serviceWorkerPollTimer: 0,
+            refreshPermissionState: null,
+            update(enabled) {
+              this.enabled = enabled === true;
+              this.refreshPermissionState?.();
+            }
           };
           try {
             Object.defineProperty(window, bridgeKey, {
@@ -1151,21 +1177,184 @@ enum DiscordCSSComposer {
           }
 
           const OriginalNotification = window.Notification;
-          if (typeof OriginalNotification === "function") {
-            const NotificationProxy = new Proxy(OriginalNotification, {
-              construct(target, argumentsList, newTarget) {
-                const instance = Reflect.construct(target, argumentsList, newTarget);
-                postNotificationEvent();
-                return instance;
-              }
-            });
+          const NotificationTarget = typeof OriginalNotification === "function"
+            ? OriginalNotification
+            : function SideCordVirtualNotification() {};
+          const refreshPermissionState = () => {
+            let permission = "unavailable";
             try {
-              window.Notification = NotificationProxy;
-              if (window.Notification === NotificationProxy) {
-                bridge.originalNotification = OriginalNotification;
-                bridge.notificationProxy = NotificationProxy;
+              if (typeof OriginalNotification?.permission === "string") {
+                permission = OriginalNotification.permission;
               }
             } catch (_) {}
+            bridge.originalPermission = permission;
+            bridge.usesVirtualPermission = permission !== "granted";
+          };
+          bridge.refreshPermissionState = refreshPermissionState;
+          refreshPermissionState();
+
+          const virtualRequestPermission = callback => {
+            const result = Promise.resolve("granted");
+            if (typeof callback === "function") {
+              result.then(permission => {
+                try { callback(permission); } catch (_) {}
+              });
+            }
+            return result;
+          };
+          const unavailableRequestPermission = callback => {
+            const result = Promise.resolve("default");
+            if (typeof callback === "function") {
+              result.then(permission => {
+                try { callback(permission); } catch (_) {}
+              });
+            }
+            return result;
+          };
+          const createVirtualNotification = (target, argumentsList, newTarget) => {
+            const title = String(argumentsList[0] ?? "");
+            const options = argumentsList[1] && typeof argumentsList[1] === "object"
+              ? argumentsList[1]
+              : {};
+            const prototype = newTarget?.prototype || target.prototype || Object.prototype;
+            const instance = Object.create(prototype);
+            const listeners = new Map();
+            const vibrate = Object.freeze(
+              options.vibrate == null
+                ? []
+                : Array.isArray(options.vibrate)
+                  ? [...options.vibrate]
+                  : [options.vibrate]
+            );
+            let closed = false;
+
+            const emit = type => {
+              const event = typeof Event === "function"
+                ? new Event(type)
+                : { type, defaultPrevented: false };
+              const handler = instance[`on${type}`];
+              if (typeof handler === "function") {
+                try { handler.call(instance, event); } catch (_) {}
+              }
+              for (const listener of listeners.get(type) || []) {
+                try { listener.call(instance, event); } catch (_) {}
+              }
+              return !event.defaultPrevented;
+            };
+            const defineValue = (value, writable = false) => ({
+              configurable: true,
+              enumerable: true,
+              writable,
+              value
+            });
+            Object.defineProperties(instance, {
+              title: defineValue(title),
+              dir: defineValue(options.dir || "auto"),
+              lang: defineValue(options.lang || ""),
+              body: defineValue(options.body || ""),
+              navigate: defineValue(String(options.navigate ?? "")),
+              tag: defineValue(options.tag || ""),
+              icon: defineValue(options.icon || ""),
+              badge: defineValue(options.badge || ""),
+              image: defineValue(options.image || ""),
+              vibrate: defineValue(vibrate),
+              data: defineValue(options.data),
+              timestamp: defineValue(Number(options.timestamp) || Date.now()),
+              renotify: defineValue(!!options.renotify),
+              silent: defineValue(options.silent == null ? null : !!options.silent),
+              requireInteraction: defineValue(!!options.requireInteraction),
+              actions: defineValue(Array.isArray(options.actions) ? options.actions : []),
+              onclick: defineValue(null, true),
+              onshow: defineValue(null, true),
+              onerror: defineValue(null, true),
+              onclose: defineValue(null, true),
+              addEventListener: defineValue((type, listener) => {
+                if (typeof listener !== "function") return;
+                if (!listeners.has(type)) listeners.set(type, new Set());
+                listeners.get(type).add(listener);
+              }),
+              removeEventListener: defineValue((type, listener) => {
+                listeners.get(type)?.delete(listener);
+              }),
+              dispatchEvent: defineValue(event => emit(event?.type || "")),
+              close: defineValue(() => {
+                if (closed) return;
+                closed = true;
+                queueMicrotask(() => emit("close"));
+              })
+            });
+            queueMicrotask(() => {
+              if (!closed) emit("show");
+            });
+            return instance;
+          };
+
+          const NotificationProxy = new Proxy(NotificationTarget, {
+            get(target, property, receiver) {
+              refreshPermissionState();
+              if (bridge.enabled && bridge.usesVirtualPermission &&
+                  property === "permission") {
+                return "granted";
+              }
+              if (bridge.enabled && bridge.usesVirtualPermission &&
+                  property === "requestPermission") {
+                return virtualRequestPermission;
+              }
+              if (typeof OriginalNotification !== "function" &&
+                  property === "permission") {
+                return "default";
+              }
+              if (typeof OriginalNotification !== "function" &&
+                  property === "requestPermission") {
+                return unavailableRequestPermission;
+              }
+              return Reflect.get(target, property, receiver);
+            },
+            has(target, property) {
+              refreshPermissionState();
+              if (bridge.enabled && bridge.usesVirtualPermission &&
+                  (property === "permission" || property === "requestPermission")) {
+                return true;
+              }
+              if (typeof OriginalNotification !== "function" &&
+                  (property === "permission" || property === "requestPermission")) {
+                return true;
+              }
+              return Reflect.has(target, property);
+            },
+            construct(target, argumentsList, newTarget) {
+              refreshPermissionState();
+              let instance;
+              if (bridge.enabled && bridge.usesVirtualPermission) {
+                instance = createVirtualNotification(target, argumentsList, newTarget);
+              } else if (typeof OriginalNotification === "function") {
+                instance = Reflect.construct(target, argumentsList, newTarget);
+              } else {
+                throw new DOMException(
+                  "Notifications are unavailable",
+                  "NotAllowedError"
+                );
+              }
+              if (bridge.enabled) postNotificationEvent();
+              return instance;
+            }
+          });
+          try { window.Notification = NotificationProxy; } catch (_) {}
+          if (window.Notification !== NotificationProxy) {
+            try {
+              Object.defineProperty(window, "Notification", {
+                configurable: true,
+                writable: true,
+                value: NotificationProxy
+              });
+            } catch (_) {}
+          }
+          if (window.Notification === NotificationProxy) {
+            bridge.originalNotification = typeof OriginalNotification === "function"
+              ? OriginalNotification
+              : null;
+            bridge.notificationProxy = NotificationProxy;
+            bridge.capturesPageNotifications = true;
           }
 
           const serviceWorkerNotificationKey = (notification, index) => {
@@ -1214,7 +1403,7 @@ enum DiscordCSSComposer {
               });
               bridge.knownServiceWorkerNotificationsByScope = nextByScope;
               bridge.serviceWorkerNotificationsBaselined = true;
-              if (hasNewNotification) postNotificationEvent();
+              if (bridge.enabled && hasNewNotification) postNotificationEvent();
             } catch (_) {
             } finally {
               scheduleServiceWorkerPoll();
