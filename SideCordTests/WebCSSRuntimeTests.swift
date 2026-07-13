@@ -437,6 +437,50 @@ final class WebCSSRuntimeTests: XCTestCase {
         XCTAssertEqual(nativeState["chatBackground"] as? String, "rgb(248, 249, 250)")
     }
 
+    func testNarrowLoginKeepsDiscordQRCodeVisibleAndReachable() async throws {
+        let (webView, navigationWaiter) = try await loadFixture(
+            html: Self.loginFixtureHTML,
+            frame: CGRect(x: 0, y: 0, width: 420, height: 700)
+        )
+        _ = navigationWaiter
+        let source = DiscordCSSComposer.userScriptSource(
+            css: try runtimeCSS(customCSS: ""),
+            configuration: makeConfiguration(navigation: .docked, composer: .full)
+        )
+
+        _ = try await webView.evaluateJavaScript(source)
+        try await waitForRuntime()
+
+        let state = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const auth = document.getElementById('auth');
+              const stack = document.getElementById('login-stack');
+              const qr = document.getElementById('qr-login');
+              const rect = qr.getBoundingClientRect();
+              return {
+                innerWidth,
+                display: getComputedStyle(qr).display,
+                direction: getComputedStyle(stack).flexDirection,
+                width: rect.width,
+                height: rect.height,
+                fitsHorizontally: rect.left >= auth.getBoundingClientRect().left &&
+                  rect.right <= auth.getBoundingClientRect().right,
+                scrollReachable: auth.scrollHeight >= rect.bottom - auth.getBoundingClientRect().top
+              };
+            })()
+            """
+        ) as! [String: Any]
+
+        XCTAssertEqual(state["innerWidth"] as? Int, 420)
+        XCTAssertNotEqual(state["display"] as? String, "none")
+        XCTAssertEqual(state["direction"] as? String, "column")
+        XCTAssertGreaterThan(state["width"] as! Double, 0)
+        XCTAssertGreaterThan(state["height"] as! Double, 0)
+        XCTAssertEqual(state["fitsHorizontally"] as? Bool, true)
+        XCTAssertEqual(state["scrollReachable"] as? Bool, true)
+    }
+
     func testVisualThemeSheetContainsNoLayoutOrVisibilityDeclarations() throws {
         let css = try resource(named: "visual-themes")
         let forbiddenDeclaration = #"(?im)^\s*(display|position|top|right|bottom|left|inset|width|min-width|max-width|height|min-height|max-height|margin|padding|transform|visibility|overflow|pointer-events|z-index)\s*:"#
@@ -504,7 +548,9 @@ final class WebCSSRuntimeTests: XCTestCase {
     }
 
     private func loadFixture(
-        messageRecorder: RuntimeMessageRecorder? = nil
+        messageRecorder: RuntimeMessageRecorder? = nil,
+        html: String? = nil,
+        frame: CGRect = CGRect(x: 0, y: 0, width: 800, height: 700)
     ) async throws -> (WKWebView, RuntimeNavigationWaiter) {
         let configuration = WKWebViewConfiguration()
         if let messageRecorder {
@@ -514,13 +560,16 @@ final class WebCSSRuntimeTests: XCTestCase {
             )
         }
         let webView = WKWebView(
-            frame: CGRect(x: 0, y: 0, width: 800, height: 700),
+            frame: frame,
             configuration: configuration
         )
         let loaded = expectation(description: "Local Discord fixture loaded")
         let navigationWaiter = RuntimeNavigationWaiter { loaded.fulfill() }
         webView.navigationDelegate = navigationWaiter
-        webView.loadHTMLString(Self.fixtureHTML, baseURL: URL(string: "https://discord.com/app")!)
+        webView.loadHTMLString(
+            html ?? Self.fixtureHTML,
+            baseURL: URL(string: "https://discord.com/app")!
+        )
         await fulfillment(of: [loaded], timeout: 5)
         return (webView, navigationWaiter)
     }
@@ -644,6 +693,56 @@ final class WebCSSRuntimeTests: XCTestCase {
             if (event.target.closest('#server')) window.fixtureServerActivationCount += 1;
           });
         </script>
+      </body>
+    </html>
+    """
+
+    private static let loginFixtureHTML = """
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          html, body { margin: 0; width: 100%; height: 100%; }
+          body { display: grid; place-items: center; }
+          .authBox_fixture {
+            box-sizing: border-box;
+            max-height: 100vh;
+            overflow-y: auto;
+            padding: 16px;
+            width: 784px;
+          }
+          .centeringWrapper_fixture { width: 100%; }
+          #login-stack { display: flex; flex-direction: row; gap: 64px; }
+          .mainLoginContainer_fixture { flex: 1 1 auto; min-width: 0; }
+          .qrLogin_fixture {
+            align-items: center;
+            display: flex;
+            flex-direction: column;
+            height: 300px;
+            width: 240px;
+          }
+          @media (max-width: 830px) {
+            .authBoxExpanded_fixture { max-width: 480px; }
+            .qrLogin_fixture { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <form id="auth" class="authBoxExpanded_fixture authBox_fixture">
+          <div class="centeringWrapper_fixture">
+            <div id="login-stack" data-direction="horizontal">
+              <div class="mainLoginContainer_fixture">
+                <label>Email <input id="email" type="text"></label>
+                <label>Password <input id="password" type="password"></label>
+              </div>
+              <div id="qr-login" class="qrLogin_fixture">
+                <div aria-label="QR code to log in">QR</div>
+                <strong>Log in with QR Code</strong>
+              </div>
+            </div>
+          </div>
+        </form>
       </body>
     </html>
     """

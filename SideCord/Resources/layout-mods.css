@@ -1,6 +1,29 @@
 /* SideCord layout behavior. JavaScript only tags Discord's live nodes; it never
    clones, moves, or replaces them, so Discord owns every interaction and menu. */
 
+/* Discord hides QR login below its desktop breakpoint. SideCord normally lives
+   inside that narrow range, so stack the existing login columns and keep both
+   sign-in methods available without cloning or moving Discord-owned controls. */
+@media (max-width: 830px) {
+  :where(
+    [class^="authBoxExpanded_"],
+    [class*=" authBoxExpanded_"]
+  ):has(:where([class^="qrLogin_"], [class*=" qrLogin_"])) :where(
+    [class^="centeringWrapper_"],
+    [class*=" centeringWrapper_"]
+  ) > [data-direction="horizontal"] {
+    align-items: center !important;
+    flex-direction: column !important;
+    gap: 24px !important;
+  }
+
+  :where([class^="qrLogin_"], [class*=" qrLogin_"]) {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    width: min(240px, 100%) !important;
+  }
+}
+
 html[data-sidecord-navigation="floating"],
 html[data-sidecord-navigation="hidden"] {
   --custom-guild-list-width: 0px;

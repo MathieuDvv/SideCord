@@ -35,7 +35,10 @@ final class SidebarPanel: NSPanel {
         isFloatingPanel = true
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
-        becomesKeyOnlyIfNeeded = true
+        // WKWebView contains several nested focusable views whose
+        // needsPanelToBecomeKey values can differ during a click. Let the panel
+        // acquire key status consistently so text selection does not flicker.
+        becomesKeyOnlyIfNeeded = false
         animationBehavior = .none
         backgroundColor = .clear
         isOpaque = false

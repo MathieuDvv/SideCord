@@ -16,6 +16,15 @@ final class PanelGeometryTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testSidebarPanelTakesKeyStatusConsistentlyForWebInputs() {
+        let panel = SidebarPanel()
+
+        XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel))
+        XCTAssertTrue(panel.canBecomeKey)
+        XCTAssertFalse(panel.becomesKeyOnlyIfNeeded)
+    }
+
     func testRightSidebarAnchorsToUsableFrame() {
         let usable = NSRect(x: 0, y: 40, width: 1_440, height: 860)
         let frame = PanelGeometry.sidebarFrame(
