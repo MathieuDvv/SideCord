@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import OSLog
 import WebKit
 
 struct DiscordWebError: Error, Equatable, Identifiable, LocalizedError {
@@ -83,6 +84,11 @@ struct DiscordRuntimeActionQueue: Equatable {
 
 @MainActor
 final class DiscordWebController: NSObject, ObservableObject {
+    private static let attentionLogger = Logger(
+        subsystem: "com.sidecord.app",
+        category: "NotificationGlow"
+    )
+
     static let discordAppURL = URL(string: "https://discord.com/app")!
     private static let runtimeMessageHandlerName = DiscordCSSComposer.messageHandlerName
 
@@ -544,6 +550,9 @@ extension DiscordWebController: WKScriptMessageHandler {
         }
 
         if type == "notification" {
+            Self.attentionLogger.info(
+                "Received a content-free Discord notification signal"
+            )
             attentionModel.receiveNotification()
             return
         }

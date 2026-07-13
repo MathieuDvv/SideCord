@@ -738,6 +738,254 @@ final class WebCSSRuntimeTests: XCTestCase {
         _ = navigationWaiter
     }
 
+    func testNotificationBridgeReportsOnlyDiscordMessageAndMentionSounds() async throws {
+        let recorder = RuntimeMessageRecorder()
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController.add(
+            recorder,
+            name: DiscordCSSComposer.messageHandlerName
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: """
+                (() => {
+                  window.fixtureMediaPlayCount = 0;
+                  window.fixtureSoundpack = 'classic';
+                  Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+                    configurable: true,
+                    writable: true,
+                    value() {
+                      window.fixtureMediaPlayCount += 1;
+                      return Promise.resolve();
+                    }
+                  });
+
+                  window.fixtureSoundURLs = {
+                    './message1.mp3':
+                      'https://discord.com/assets/current-message.mp3?version=1',
+                    './message2.mp3':
+                      'https://discord.com/assets/current-message-two.mp3',
+                    './mention1.mp3':
+                      'https://discord.com/assets/current-mention.mp3',
+                    './lofi_message1.mp3':
+                      'https://discord.com/assets/current-lofi-message.mp3',
+                    './discodo.mp3':
+                      'https://discord.com/assets/current-discodo.mp3',
+                    './mute.mp3':
+                      'https://discord.com/assets/current-mute.mp3'
+                  };
+                  const factories = {
+                    4242(module) {
+                      const logicalSoundNames = [
+                        './message1.mp3',
+                        './message2.mp3',
+                        './mention1.mp3',
+                        './lofi_message1.mp3',
+                        './discodo.mp3',
+                        './mute.mp3'
+                      ];
+                      const context = key => window.fixtureSoundURLs[key];
+                      context.keys = () => logicalSoundNames;
+                      module.exports = context;
+                    },
+                    9001(module) {
+                      const packs = {
+                        classic: { message1: 'message1' },
+                        discodo: { message1: 'discodo' }
+                      };
+                      module.exports = pack => packs[pack];
+                    },
+                    8001(module) {
+                      const SoundpackStore = {
+                        getSoundpack() {
+                          return window.fixtureSoundpack;
+                        }
+                      };
+                      module.exports = { A: SoundpackStore };
+                    }
+                  };
+                  const cache = {};
+                  const fixtureWebpackRequire = id => {
+                    if (!cache[id]) {
+                      const module = { exports: {} };
+                      cache[id] = module;
+                      factories[id](module);
+                    }
+                    return cache[id].exports;
+                  };
+                  fixtureWebpackRequire.m = factories;
+
+                  const chunks = [];
+                  chunks.push = function(payload) {
+                    Array.prototype.push.call(this, payload);
+                    payload[2]?.(fixtureWebpackRequire);
+                    return this.length;
+                  };
+                  window.fixtureInstallWebpack = () => {
+                    window.webpackChunkdiscord_app = chunks;
+                  };
+                })();
+                """,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: DiscordCSSComposer.notificationBridgeUserScriptSource(),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let loaded = expectation(description: "Discord sound bridge fixture loaded")
+        let navigationWaiter = RuntimeNavigationWaiter { loaded.fulfill() }
+        webView.navigationDelegate = navigationWaiter
+        webView.loadHTMLString(
+            "<!doctype html><html><body></body></html>",
+            baseURL: URL(string: "https://discord.com/app")!
+        )
+        await fulfillment(of: [loaded], timeout: 5)
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const bridge =
+                window['\(DiscordCSSComposer.notificationBridgeKey)'];
+              bridge.notificationSoundDiscoveryAttempts = 52;
+              window.fixtureInstallWebpack();
+              const audio = document.createElement('audio');
+              audio.src = window.fixtureSoundURLs['./mute.mp3'];
+              audio.play();
+            })()
+            """
+        )
+        let soundCaptureIsReady = try await waitForNotificationSoundCapture(
+            in: webView
+        )
+        XCTAssertTrue(soundCaptureIsReady)
+        XCTAssertTrue(recorder.notificationPayloads.isEmpty)
+        _ = try await webView.evaluateJavaScript(
+            "window.fixtureMediaPlayCount = 0"
+        )
+
+        let bridgeState = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const bridge = window['\(DiscordCSSComposer.notificationBridgeKey)'];
+              return {
+                capturesNotificationSounds: bridge.capturesNotificationSounds,
+                discoveredSoundCount: bridge.notificationSoundPaths.size,
+                discodoSoundCount:
+                  bridge.discodoNotificationSoundPaths.size,
+                foundSoundpackStore:
+                  typeof bridge.notificationSoundPackStore?.getSoundpack ===
+                    'function',
+                playIsWrapped:
+                  HTMLMediaElement.prototype.play === bridge.mediaPlayProxy
+              };
+            })()
+            """
+        ) as! [String: Any]
+        XCTAssertEqual(bridgeState["capturesNotificationSounds"] as? Bool, true)
+        XCTAssertEqual(bridgeState["discoveredSoundCount"] as? Int, 5)
+        XCTAssertEqual(bridgeState["discodoSoundCount"] as? Int, 1)
+        XCTAssertEqual(bridgeState["foundSoundpackStore"] as? Bool, true)
+        XCTAssertEqual(bridgeState["playIsWrapped"] as? Bool, true)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const play = source => {
+                const audio = document.createElement('audio');
+                audio.src = source;
+                audio.play();
+              };
+              play(window.fixtureSoundURLs['./message1.mp3']);
+              play(window.fixtureSoundURLs['./mention1.mp3']);
+              play(window.fixtureSoundURLs['./lofi_message1.mp3']);
+              play(window.fixtureSoundURLs['./discodo.mp3']);
+              play(window.fixtureSoundURLs['./mute.mp3']);
+              play('https://discord.com/assets/unrelated-media.mp3');
+              return true;
+            })()
+            """
+        )
+        try await waitForRuntime()
+
+        XCTAssertEqual(recorder.notificationPayloads.count, 3)
+        for payload in recorder.notificationPayloads {
+            XCTAssertEqual(Set(payload.keys), ["type"])
+        }
+        let playCount = try await webView.evaluateJavaScript(
+            "window.fixtureMediaPlayCount"
+        ) as! Int
+        XCTAssertEqual(playCount, 6)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              window.fixtureSoundpack = 'discodo';
+              const audio = document.createElement('audio');
+              audio.src = window.fixtureSoundURLs['./discodo.mp3'];
+              audio.play();
+              return true;
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 4)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const bridge =
+                window['\(DiscordCSSComposer.notificationBridgeKey)'];
+              bridge.notificationSoundPackStore = null;
+              const audio = document.createElement('audio');
+              audio.src = window.fixtureSoundURLs['./discodo.mp3'];
+              audio.play();
+              return true;
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 5)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              new Notification('private delayed notification');
+              setTimeout(() => {
+                const audio = document.createElement('audio');
+                audio.src = window.fixtureSoundURLs['./message1.mp3'];
+                audio.play();
+              }, 900);
+              return true;
+            })()
+            """
+        )
+        try await Task.sleep(for: .milliseconds(1_100))
+        XCTAssertEqual(recorder.notificationPayloads.count, 7)
+
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.notificationBridgeUserScriptSource(isEnabled: false)
+        )
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const audio = document.createElement('audio');
+              audio.src = window.fixtureSoundURLs['./message2.mp3'];
+              audio.play();
+              return true;
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 7)
+        _ = navigationWaiter
+    }
+
     func testMessageActivityBridgeIgnoresBaselineAndHistoryButReportsRepeatedAppends() async throws {
         let recorder = RuntimeMessageRecorder()
         let (webView, navigationWaiter) = try await loadFixture(messageRecorder: recorder)
@@ -915,7 +1163,7 @@ final class WebCSSRuntimeTests: XCTestCase {
         XCTAssertEqual(recorder.notificationPayloads.count, 4)
     }
 
-    func testMessageFallbackDefersToTheLiveNotificationBridge() async throws {
+    func testMessageFallbackDefersToExactNotificationSignals() async throws {
         let recorder = RuntimeMessageRecorder()
         let (webView, navigationWaiter) = try await loadFixture(
             messageRecorder: recorder,
@@ -944,6 +1192,12 @@ final class WebCSSRuntimeTests: XCTestCase {
         )
         let messageTrackingIsArmed = try await waitForMessageTracking(in: webView)
         XCTAssertTrue(messageTrackingIsArmed)
+        _ = try await webView.evaluateJavaScript(
+            """
+            window['\(DiscordCSSComposer.notificationBridgeKey)']
+              .capturesNotificationSounds = true
+            """
+        )
 
         _ = try await webView.evaluateJavaScript(
             """
@@ -977,16 +1231,19 @@ final class WebCSSRuntimeTests: XCTestCase {
         _ = try await webView.evaluateJavaScript(
             DiscordCSSComposer.notificationBridgeUserScriptSource(isEnabled: true)
         )
-        let bridgeWasReplaced = try await webView.evaluateJavaScript(
+        let exactSoundCaptureWasReplaced = try await webView.evaluateJavaScript(
             """
             (() => {
-              window.Notification = function DiscordReplacementNotification() {};
-              return window.Notification !==
-                window['\(DiscordCSSComposer.notificationBridgeKey)'].notificationProxy;
+              const bridge =
+                window['\(DiscordCSSComposer.notificationBridgeKey)'];
+              bridge.capturesNotificationSounds = true;
+              HTMLMediaElement.prototype.play = bridge.originalMediaPlay;
+              return bridge.capturesNotificationSounds &&
+                HTMLMediaElement.prototype.play !== bridge.mediaPlayProxy;
             })()
             """
         ) as! Bool
-        XCTAssertTrue(bridgeWasReplaced)
+        XCTAssertTrue(exactSoundCaptureWasReplaced)
 
         _ = try await webView.evaluateJavaScript(
             """
@@ -1212,7 +1469,7 @@ final class WebCSSRuntimeTests: XCTestCase {
             XCTAssertNotEqual(fullVisibility[control], "none", control)
         }
         let runtimeStillExists = try await webView.evaluateJavaScript(
-            "window['\(DiscordCSSComposer.runtimeKey)']?.version === 6"
+            "window['\(DiscordCSSComposer.runtimeKey)']?.version === 7"
         ) as! Bool
         XCTAssertTrue(runtimeStillExists)
 
@@ -1641,6 +1898,19 @@ final class WebCSSRuntimeTests: XCTestCase {
     ) async throws -> Bool {
         for _ in 0..<30 {
             if recorder.notificationPayloads.count >= expectedCount { return true }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        return false
+    }
+
+    private func waitForNotificationSoundCapture(
+        in webView: WKWebView
+    ) async throws -> Bool {
+        for _ in 0..<30 {
+            let isReady = try await webView.evaluateJavaScript(
+                "window['\(DiscordCSSComposer.notificationBridgeKey)']?.capturesNotificationSounds === true"
+            ) as! Bool
+            if isReady { return true }
             try await Task.sleep(for: .milliseconds(100))
         }
         return false

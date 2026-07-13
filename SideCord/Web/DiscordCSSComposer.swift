@@ -12,7 +12,7 @@ struct DiscordCSSRuntimeConfiguration: Encodable, Equatable, Sendable {
 enum DiscordCSSComposer {
     static let styleElementID = "sidecord-injected-css"
     static let runtimeKey = "__sidecordWebRuntime_v3__"
-    static let notificationBridgeKey = "__sidecordNotificationBridge_v2__"
+    static let notificationBridgeKey = "__sidecordNotificationBridge_v3__"
     static let messageHandlerName = "sidecordRuntime"
 
     static let managedConfigurationAttributeNames = [
@@ -184,7 +184,7 @@ enum DiscordCSSComposer {
           const notificationBridgeKey = \(encodedNotificationBridgeKey);
           const previousRuntime = window[runtimeKey];
 
-          if (previousRuntime && previousRuntime.version === 6 &&
+          if (previousRuntime && previousRuntime.version === 7 &&
               typeof previousRuntime.update === "function") {
             previousRuntime.update(nextCSS, nextConfiguration);
             return;
@@ -217,7 +217,7 @@ enum DiscordCSSComposer {
           };
 
           const state = {
-            version: 6,
+            version: 7,
             css: nextCSS,
             configuration: nextConfiguration,
             drawerOpen: false,
@@ -446,11 +446,12 @@ enum DiscordCSSComposer {
             if (notificationBridge && notificationBridge.enabled !== true) {
               return false;
             }
-            const bridgeCapturesPageNotifications =
+            const bridgeCapturesNotificationSounds =
               notificationBridge?.enabled === true &&
-              notificationBridge?.capturesPageNotifications === true &&
-              window.Notification === notificationBridge?.notificationProxy;
-            return !bridgeCapturesPageNotifications &&
+              notificationBridge?.capturesNotificationSounds === true &&
+              window.HTMLMediaElement?.prototype?.play ===
+                notificationBridge?.mediaPlayProxy;
+            return !bridgeCapturesNotificationSounds &&
               !currentChannelIsMuted() &&
               descriptors.some(messageHasNotificationSemantic);
           };
@@ -1112,10 +1113,10 @@ enum DiscordCSSComposer {
         """
     }
 
-    /// Runs before Discord's application bundle and lets SideCord's glow act as
-    /// the notification surface when WebKit cannot grant HTML notification
-    /// permission. Discord still decides which events qualify; notification
-    /// arguments never leave the page.
+    /// Runs before Discord's application bundle and lets SideCord observe both
+    /// HTML notifications and Discord's exact message/mention sound assets.
+    /// Discord still decides which events qualify; notification arguments and
+    /// sound URLs never leave the page.
     static func notificationBridgeUserScriptSource(isEnabled: Bool = true) -> String {
         let encodedMessageHandlerName = javascriptLiteral(
             messageHandlerName,
@@ -1153,9 +1154,20 @@ enum DiscordCSSComposer {
             originalNotification: null,
             notificationProxy: null,
             capturesPageNotifications: false,
+            capturesNotificationSounds: false,
             enabled: nextEnabled,
             usesVirtualPermission: false,
             originalPermission: "unavailable",
+            notificationSoundPaths: new Set(),
+            discodoNotificationSoundPaths: new Set(),
+            notificationSoundPackStore: null,
+            notificationSoundWebpackRequire: null,
+            notificationSoundDiscoveryAttempts: 0,
+            notificationSoundDiscoveryTimer: 0,
+            lastNotificationSoundOnDemandDiscoveryTimestamp: 0,
+            scheduleNotificationSoundDiscovery: null,
+            originalMediaPlay: null,
+            mediaPlayProxy: null,
             serviceWorkerNotificationsBaselined: false,
             knownServiceWorkerNotificationsByScope: new Map(),
             serviceWorkerPollTimer: 0,
@@ -1163,6 +1175,12 @@ enum DiscordCSSComposer {
             update(enabled) {
               this.enabled = enabled === true;
               this.refreshPermissionState?.();
+              if (!this.enabled && this.notificationSoundDiscoveryTimer) {
+                clearTimeout(this.notificationSoundDiscoveryTimer);
+                this.notificationSoundDiscoveryTimer = 0;
+              } else if (this.enabled) {
+                this.scheduleNotificationSoundDiscovery?.();
+              }
             }
           };
           try {
@@ -1357,6 +1375,221 @@ enum DiscordCSSComposer {
             bridge.capturesPageNotifications = true;
           }
 
+          // Discord has intentional sound-only notification paths (for example,
+          // an incoming message in the selected channel while the document is
+          // unfocused). Resolve only Discord's bundled message/mention sounds,
+          // then observe those exact assets without exposing their URL—or any
+          // message content—to native code.
+          const notificationSoundNamePattern =
+            /(?:^|[_/])(?:message|mention)\\d+\\.(?:mp3|ogg|wav)$/i;
+          const normalizedSoundResource = value => {
+            if (typeof value !== "string" || !value) return null;
+            try {
+              const url = new URL(value, document.baseURI);
+              url.search = "";
+              url.hash = "";
+              return `${url.origin}${url.pathname}`;
+            } catch (_) {
+              return value.split(/[?#]/, 1)[0] || null;
+            }
+          };
+          const captureWebpackRequire = () => {
+            if (typeof bridge.notificationSoundWebpackRequire === "function") {
+              return bridge.notificationSoundWebpackRequire;
+            }
+            const chunkArrays = [];
+            try {
+              if (Array.isArray(window.webpackChunkdiscord_app)) {
+                chunkArrays.push(window.webpackChunkdiscord_app);
+              }
+              for (const key of Object.keys(window)) {
+                if (!key.startsWith("webpackChunk")) continue;
+                const candidate = window[key];
+                if (Array.isArray(candidate) && !chunkArrays.includes(candidate)) {
+                  chunkArrays.push(candidate);
+                }
+              }
+            } catch (_) {}
+
+            for (const [index, chunkArray] of chunkArrays.entries()) {
+              if (typeof chunkArray.push !== "function" ||
+                  chunkArray.push === Array.prototype.push) continue;
+              let webpackRequire = null;
+              try {
+                const marker = `sidecord_notification_sounds_${Date.now()}_${index}`;
+                chunkArray.push([[marker], {}, require => {
+                  webpackRequire = require;
+                }]);
+              } catch (_) {}
+              if (typeof webpackRequire === "function") {
+                bridge.notificationSoundWebpackRequire = webpackRequire;
+                return webpackRequire;
+              }
+            }
+            return null;
+          };
+          const discoverNotificationSounds = () => {
+            const mediaPlayCaptureIsLive =
+              bridge.mediaPlayProxy !== null &&
+              window.HTMLMediaElement?.prototype?.play === bridge.mediaPlayProxy;
+            if (bridge.notificationSoundPaths.size > 0) {
+              bridge.capturesNotificationSounds = mediaPlayCaptureIsLive;
+              return bridge.capturesNotificationSounds;
+            }
+            const webpackRequire = captureWebpackRequire();
+            const factories = webpackRequire?.m;
+            if (!factories || typeof factories !== "object") return false;
+
+            const factoryEntries = Object.entries(factories);
+            const factorySources = new Map();
+            const mappedNotificationSoundNames = new Set();
+            const mappedMessageSoundPattern =
+              /(?:["']?message\\d+["']?)\\s*:\\s*["']([^"']+)["']/g;
+            for (const [moduleID, factory] of factoryEntries) {
+              let factorySource = "";
+              try {
+                factorySource = Function.prototype.toString.call(factory);
+              } catch (_) {}
+              factorySources.set(moduleID, factorySource);
+              for (const match of factorySource.matchAll(mappedMessageSoundPattern)) {
+                if (match[1]) mappedNotificationSoundNames.add(match[1]);
+              }
+              if (!bridge.notificationSoundPackStore &&
+                  factorySource.includes("SoundpackStore") &&
+                  factorySource.includes("getSoundpack")) {
+                try {
+                  const exportedStore = webpackRequire(moduleID);
+                  const candidates = [
+                    exportedStore,
+                    ...Object.values(exportedStore || {})
+                  ];
+                  bridge.notificationSoundPackStore = candidates.find(candidate =>
+                    typeof candidate?.getSoundpack === "function"
+                  ) || null;
+                } catch (_) {}
+              }
+            }
+
+            for (const [moduleID] of factoryEntries) {
+              const factorySource = factorySources.get(moduleID) || "";
+              if (!factorySource.includes("./message1.mp3") ||
+                  !factorySource.includes("./mention1.mp3")) continue;
+
+              try {
+                const soundContext = webpackRequire(moduleID);
+                if (typeof soundContext !== "function" ||
+                    typeof soundContext.keys !== "function") continue;
+                for (const key of soundContext.keys()) {
+                  const logicalName = String(key)
+                    .split("/")
+                    .pop()
+                    ?.replace(/\\.(?:mp3|ogg|wav)$/i, "");
+                  if (!notificationSoundNamePattern.test(key) &&
+                      !mappedNotificationSoundNames.has(logicalName)) continue;
+                  const exported = soundContext(key);
+                  const resource = typeof exported === "string"
+                    ? exported
+                    : exported?.default;
+                  const normalized = normalizedSoundResource(resource);
+                  if (normalized) {
+                    bridge.notificationSoundPaths.add(normalized);
+                    if (logicalName === "discodo") {
+                      bridge.discodoNotificationSoundPaths.add(normalized);
+                    }
+                  }
+                }
+              } catch (_) {}
+            }
+            bridge.capturesNotificationSounds =
+              mediaPlayCaptureIsLive &&
+              bridge.notificationSoundPaths.size > 0;
+            return bridge.capturesNotificationSounds;
+          };
+          const scheduleNotificationSoundDiscovery = () => {
+            const mediaPlayCaptureIsLive =
+              window.HTMLMediaElement?.prototype?.play === bridge.mediaPlayProxy;
+            if (!bridge.enabled ||
+                bridge.notificationSoundDiscoveryTimer ||
+                (bridge.capturesNotificationSounds && mediaPlayCaptureIsLive) ||
+                bridge.notificationSoundDiscoveryAttempts >= 52) return;
+            const delay = bridge.notificationSoundDiscoveryAttempts < 40
+              ? 250
+              : 5_000;
+            bridge.notificationSoundDiscoveryTimer = setTimeout(() => {
+              bridge.notificationSoundDiscoveryTimer = 0;
+              bridge.notificationSoundDiscoveryAttempts += 1;
+              if (!discoverNotificationSounds()) {
+                scheduleNotificationSoundDiscovery();
+              }
+            }, delay);
+          };
+          bridge.scheduleNotificationSoundDiscovery =
+            scheduleNotificationSoundDiscovery;
+          const mediaPrototype = window.HTMLMediaElement?.prototype;
+          const mediaPlayDescriptor = mediaPrototype
+            ? Object.getOwnPropertyDescriptor(mediaPrototype, "play")
+            : null;
+          const OriginalMediaPlay = mediaPlayDescriptor?.value ?? mediaPrototype?.play;
+          if (mediaPrototype && typeof OriginalMediaPlay === "function") {
+            const MediaPlayProxy = function(...argumentsList) {
+              if (bridge.enabled) {
+                const timestamp = performance.now();
+                const canRetryOnDemand =
+                  bridge.notificationSoundDiscoveryAttempts < 52 ||
+                  bridge.lastNotificationSoundOnDemandDiscoveryTimestamp === 0 ||
+                  timestamp -
+                    bridge.lastNotificationSoundOnDemandDiscoveryTimestamp >= 30_000;
+                if (canRetryOnDemand) {
+                  bridge.lastNotificationSoundOnDemandDiscoveryTimestamp = timestamp;
+                  discoverNotificationSounds();
+                }
+              }
+              try {
+                if (bridge.enabled) {
+                  const resources = [
+                    this.currentSrc,
+                    this.src,
+                    this.getAttribute?.("src")
+                  ];
+                  const isNotificationSound = resources.some(resource => {
+                    const normalized = normalizedSoundResource(resource);
+                    if (!normalized ||
+                        !bridge.notificationSoundPaths.has(normalized)) return false;
+                    if (!bridge.discodoNotificationSoundPaths.has(normalized)) {
+                      return true;
+                    }
+                    let soundpack = null;
+                    try {
+                      soundpack = bridge.notificationSoundPackStore?.getSoundpack?.();
+                    } catch (_) {}
+                    // The same Discodo asset is also an Easter-egg connection
+                    // sound. Treat it as a message only when that pack is active;
+                    // if Discord hides its store in a future build, favor not
+                    // missing a real notification.
+                    return soundpack == null || soundpack === "discodo";
+                  });
+                  if (isNotificationSound) postNotificationEvent();
+                }
+              } catch (_) {}
+              return Reflect.apply(OriginalMediaPlay, this, argumentsList);
+            };
+            try {
+              Object.defineProperty(mediaPrototype, "play", {
+                configurable: mediaPlayDescriptor?.configurable ?? true,
+                enumerable: mediaPlayDescriptor?.enumerable ?? false,
+                writable: mediaPlayDescriptor?.writable ?? true,
+                value: MediaPlayProxy
+              });
+            } catch (_) {}
+            if (mediaPrototype.play === MediaPlayProxy) {
+              bridge.originalMediaPlay = OriginalMediaPlay;
+              bridge.mediaPlayProxy = MediaPlayProxy;
+            }
+          }
+          if (bridge.enabled && !discoverNotificationSounds()) {
+            scheduleNotificationSoundDiscovery();
+          }
+
           const serviceWorkerNotificationKey = (notification, index) => {
             const tag = typeof notification?.tag === "string" ? notification.tag : "";
             const timestampValue = Number(notification?.timestamp);
@@ -1403,7 +1636,9 @@ enum DiscordCSSComposer {
               });
               bridge.knownServiceWorkerNotificationsByScope = nextByScope;
               bridge.serviceWorkerNotificationsBaselined = true;
-              if (bridge.enabled && hasNewNotification) postNotificationEvent();
+              if (bridge.enabled && hasNewNotification) {
+                postNotificationEvent();
+              }
             } catch (_) {
             } finally {
               scheduleServiceWorkerPoll();

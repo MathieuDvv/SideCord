@@ -1,9 +1,15 @@
 import AppKit
 import Combine
+import OSLog
 import QuartzCore
 
 @MainActor
 final class PanelController: NSObject, ObservableObject {
+    private static let attentionLogger = Logger(
+        subsystem: "com.sidecord.app",
+        category: "NotificationGlow"
+    )
+
     @Published private(set) var isVisible = false
     @Published private(set) var isMaximized = false
 
@@ -452,11 +458,34 @@ final class PanelController: NSObject, ObservableObject {
     }
 
     private func presentNotificationGlow() {
-        guard settings.notificationGlowEnabled,
-              !isVisible,
-              canPresentPanel,
-              let screen = attentionScreenForNewPresentation()
-        else { return }
+        guard settings.notificationGlowEnabled else {
+            Self.attentionLogger.info(
+                "Ignored a Discord notification signal because glow is disabled"
+            )
+            return
+        }
+        guard !isVisible else {
+            Self.attentionLogger.info(
+                "Acknowledged a Discord notification signal while SideCord is visible"
+            )
+            return
+        }
+        guard canPresentPanel else {
+            Self.attentionLogger.info(
+                "Deferred a Discord notification glow while presentation is unavailable"
+            )
+            return
+        }
+        guard let screen = attentionScreenForNewPresentation() else {
+            Self.attentionLogger.error(
+                "Could not present a Discord notification glow because no screen was available"
+            )
+            return
+        }
+
+        Self.attentionLogger.info(
+            "Presenting Discord notification glow"
+        )
 
         if attentionCallState.shouldPresent {
             attentionGlowController.presentCall(
