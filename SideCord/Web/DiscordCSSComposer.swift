@@ -12,6 +12,7 @@ struct DiscordCSSRuntimeConfiguration: Encodable, Equatable, Sendable {
 enum DiscordCSSComposer {
     static let styleElementID = "sidecord-injected-css"
     static let runtimeKey = "__sidecordWebRuntime_v3__"
+    static let notificationBridgeKey = "__sidecordNotificationBridge_v1__"
     static let messageHandlerName = "sidecordRuntime"
 
     static let managedConfigurationAttributeNames = [
@@ -209,6 +210,7 @@ enum DiscordCSSComposer {
             fallbackTimer: 0,
             railReportTimer: 0,
             lastRailPayload: "",
+            incomingCallActive: false,
             railElements: new Map(),
             observedRoot: null,
             observedAccountDock: null,
@@ -237,6 +239,12 @@ enum DiscordCSSComposer {
             type: "drawer",
             open: !!open
           });
+          const reportIncomingCallState = active => {
+            const nextActive = !!active;
+            if (state.incomingCallActive === nextActive) return;
+            state.incomingCallActive = nextActive;
+            postRuntimeMessage({ type: "incomingCall", active: nextActive });
+          };
 
           const resolvedColorScheme = () => {
             const requested = state.configuration.requestedColorScheme;
@@ -533,6 +541,7 @@ enum DiscordCSSComposer {
             const previousComposer = state.roleElements["composer"] || null;
             const composer = resolveRole("composer", findComposer);
             scheduleRailReport(guildRail);
+            reportIncomingCallState(!!safeQuery(document, tokenSelector("ringingIncoming")));
             bindAccountDockGeometry(channelList, accountDock);
 
             for (const composerRoot of new Set([previousComposer, composer])) {
@@ -781,6 +790,7 @@ enum DiscordCSSComposer {
             if (state.disposed) return;
             state.disposed = true;
             reportDrawerState(false);
+            reportIncomingCallState(false);
             if (state.frameRequest) cancelAnimationFrame(state.frameRequest);
             if (state.fallbackTimer) clearTimeout(state.fallbackTimer);
             if (state.railReportTimer) clearTimeout(state.railReportTimer);
@@ -813,6 +823,60 @@ enum DiscordCSSComposer {
           window[runtimeKey] = state;
           reconcile();
           reportDrawerState(false);
+        })();
+        """
+    }
+
+    /// Runs before Discord's application bundle so successful HTML5 desktop
+    /// notifications can become content-free native attention events. The
+    /// constructor arguments never leave the page.
+    static func notificationBridgeUserScriptSource() -> String {
+        let encodedMessageHandlerName = javascriptLiteral(
+            messageHandlerName,
+            fallback: "\"\""
+        )
+        return """
+        (() => {
+          const host = window.location.hostname.toLowerCase().replace(/\\.+$/, "");
+          const isDiscordHost = host === "discord.com" ||
+            host.endsWith(".discord.com") ||
+            host === "discordapp.com" ||
+            host.endsWith(".discordapp.com");
+          if (window.location.protocol !== "https:" || !isDiscordHost) return;
+
+          const bridgeKey = "\(notificationBridgeKey)";
+          if (window[bridgeKey]) return;
+          const OriginalNotification = window.Notification;
+          if (typeof OriginalNotification !== "function") return;
+
+          const messageHandlerName = \(encodedMessageHandlerName);
+          const postNotificationEvent = () => {
+            try {
+              window.webkit?.messageHandlers?.[messageHandlerName]?.postMessage({
+                type: "notification"
+              });
+            } catch (_) {}
+          };
+
+          let NotificationProxy;
+          NotificationProxy = new Proxy(OriginalNotification, {
+            construct(target, argumentsList, newTarget) {
+              const instance = Reflect.construct(target, argumentsList, newTarget);
+              postNotificationEvent();
+              return instance;
+            }
+          });
+
+          try {
+            window.Notification = NotificationProxy;
+            if (window.Notification !== NotificationProxy) return;
+            Object.defineProperty(window, bridgeKey, {
+              configurable: false,
+              enumerable: false,
+              writable: false,
+              value: { original: OriginalNotification, proxy: NotificationProxy }
+            });
+          } catch (_) {}
         })();
         """
     }

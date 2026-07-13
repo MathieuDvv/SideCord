@@ -12,6 +12,7 @@ final class PanelController: NSObject, ObservableObject {
 
     private let settings: AppSettings
     private let webController: DiscordWebController
+    private let attentionGlowController = AttentionGlowController()
     private lazy var edgeMonitor = EdgeMonitor(
         settings: settings,
         isSuppressed: { [weak self] in
@@ -35,6 +36,7 @@ final class PanelController: NSObject, ObservableObject {
     private var requiresExplicitDismissal = false
     private var restoreAfterSystemInterruption = false
     private var restoreExplicitDismissalAfterSystemInterruption = false
+    private var attentionCallState = AttentionGlowCallState()
 
     init(
         settings: AppSettings,
@@ -79,6 +81,7 @@ final class PanelController: NSObject, ObservableObject {
         cancelAutomaticRetraction()
         panel.orderOut(nil)
         railPanel.orderOut(nil)
+        attentionGlowController.hideImmediately()
         isVisible = false
         panel.contentView = nil
         railPanel.contentView = nil
@@ -162,6 +165,7 @@ final class PanelController: NSObject, ObservableObject {
 
     private func reveal(on screen: NSScreen, activate: Bool) {
         guard canPresentPanel else { return }
+        acknowledgeAttentionForReveal()
         cancelAutomaticRetraction()
         let displayID = PanelGeometry.displayID(for: screen)
 
@@ -435,6 +439,115 @@ final class PanelController: NSObject, ObservableObject {
         sessionIsActive && screensAreAwake
     }
 
+    private func presentNotificationGlow() {
+        guard settings.notificationGlowEnabled,
+              !isVisible,
+              canPresentPanel,
+              let screen = attentionScreenForNewPresentation()
+        else { return }
+
+        if attentionCallState.shouldPresent {
+            attentionGlowController.presentCall(
+                on: screen,
+                edge: settings.sidebarEdge,
+                color: attentionGlowColor
+            )
+        } else {
+            attentionGlowController.presentNotification(
+                on: screen,
+                edge: settings.sidebarEdge,
+                color: attentionGlowColor
+            )
+        }
+    }
+
+    private func handleIncomingCallState(_ isActive: Bool) {
+        attentionCallState.update(isActive: isActive, sidebarIsVisible: isVisible)
+        guard isActive else {
+            if attentionGlowController.presentation == .call {
+                attentionGlowController.dismissSoftly()
+            }
+            return
+        }
+
+        guard settings.notificationGlowEnabled,
+              attentionCallState.shouldPresent,
+              !isVisible,
+              canPresentPanel,
+              let screen = attentionScreenForNewPresentation()
+        else {
+            attentionGlowController.dismissSoftly()
+            return
+        }
+
+        attentionGlowController.presentCall(
+            on: screen,
+            edge: settings.sidebarEdge,
+            color: attentionGlowColor
+        )
+    }
+
+    private func acknowledgeAttentionForReveal() {
+        attentionCallState.acknowledge()
+        attentionGlowController.dismissSoftly()
+    }
+
+    private func resumeIncomingCallGlowIfNeeded() {
+        guard settings.notificationGlowEnabled,
+              attentionCallState.shouldPresent,
+              !isVisible,
+              canPresentPanel,
+              let screen = attentionScreenForNewPresentation()
+        else { return }
+        attentionGlowController.presentCall(
+            on: screen,
+            edge: settings.sidebarEdge,
+            color: attentionGlowColor
+        )
+    }
+
+    private func refreshAttentionGlowAppearance() {
+        guard attentionGlowController.isPresenting else { return }
+        let screen = attentionGlowController.displayID.flatMap { displayID in
+            NSScreen.screens.first { PanelGeometry.displayID(for: $0) == displayID }
+        } ?? attentionScreenForNewPresentation()
+        guard let screen else {
+            attentionGlowController.hideImmediately()
+            return
+        }
+        attentionGlowController.updateAppearance(
+            on: screen,
+            edge: settings.sidebarEdge,
+            color: attentionGlowColor
+        )
+    }
+
+    private func attentionScreenForNewPresentation() -> NSScreen? {
+        PanelGeometry.screen(containing: NSEvent.mouseLocation, from: NSScreen.screens)
+            ?? activeScreen
+            ?? NSScreen.main
+    }
+
+    private var attentionGlowColor: NSColor {
+        func color(_ red: Int, _ green: Int, _ blue: Int) -> NSColor {
+            NSColor(
+                srgbRed: CGFloat(red) / 255,
+                green: CGFloat(green) / 255,
+                blue: CGFloat(blue) / 255,
+                alpha: 1
+            )
+        }
+
+        switch settings.themeAccent {
+        case .automatic, .blurple: return color(88, 101, 242)
+        case .blue: return color(10, 132, 255)
+        case .purple: return color(175, 82, 222)
+        case .pink: return color(255, 45, 85)
+        case .green: return color(48, 209, 88)
+        case .orange: return color(255, 159, 10)
+        }
+    }
+
     private func setPanelResizable(_ isResizable: Bool) {
         if isResizable {
             panel.styleMask.insert(.resizable)
@@ -449,6 +562,51 @@ final class PanelController: NSObject, ObservableObject {
             .sink { [weak self] _ in
                 Task { @MainActor [weak self] in
                     self?.repositionForCurrentSettings()
+                    self?.refreshAttentionGlowAppearance()
+                }
+            }
+            .store(in: &cancellables)
+
+        settings.$themeAccent
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.refreshAttentionGlowAppearance()
+                }
+            }
+            .store(in: &cancellables)
+
+        settings.$notificationGlowEnabled
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] isEnabled in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if isEnabled {
+                        self.resumeIncomingCallGlowIfNeeded()
+                    } else {
+                        self.attentionGlowController.hideImmediately()
+                    }
+                }
+            }
+            .store(in: &cancellables)
+
+        webController.attentionModel.$notificationSequence
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.presentNotificationGlow()
+                }
+            }
+            .store(in: &cancellables)
+
+        webController.attentionModel.$isIncomingCallActive
+            .removeDuplicates()
+            .sink { [weak self] isActive in
+                Task { @MainActor [weak self] in
+                    self?.handleIncomingCallState(isActive)
                 }
             }
             .store(in: &cancellables)
@@ -559,9 +717,16 @@ final class PanelController: NSObject, ObservableObject {
             controller.screensAreAwake = true
             controller.restorePresentationAfterSystemInterruptionIfNeeded()
         }
+        observeWorkspaceNotification(
+            NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            in: workspaceCenter
+        ) { controller in
+            controller.attentionGlowController.refreshAccessibilityAnimation()
+        }
     }
 
     private func suspendPresentationForSystemInterruption() {
+        attentionGlowController.hideImmediately()
         if isVisible {
             restoreAfterSystemInterruption = true
             restoreExplicitDismissalAfterSystemInterruption = requiresExplicitDismissal
@@ -570,7 +735,11 @@ final class PanelController: NSObject, ObservableObject {
     }
 
     private func restorePresentationAfterSystemInterruptionIfNeeded() {
-        guard canPresentPanel, restoreAfterSystemInterruption else { return }
+        guard canPresentPanel else { return }
+        guard restoreAfterSystemInterruption else {
+            resumeIncomingCallGlowIfNeeded()
+            return
+        }
 
         let restoreExplicitDismissal = restoreExplicitDismissalAfterSystemInterruption
         restoreAfterSystemInterruption = false
@@ -597,6 +766,7 @@ final class PanelController: NSObject, ObservableObject {
     }
 
     private func handleScreenConfigurationChange() {
+        refreshAttentionGlowAppearance()
         guard isVisible else { return }
         let screen = activeScreen
             ?? PanelGeometry.screen(containing: NSEvent.mouseLocation, from: NSScreen.screens)

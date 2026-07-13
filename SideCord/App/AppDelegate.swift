@@ -129,7 +129,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let rootView = SidebarRootView(
             settings: settings,
             webController: webController,
-            panelController: panelController
+            panelController: panelController,
+            onOpenSettings: { [weak self] in
+                self?.showSettings()
+            }
         )
         panelController.setContentView(NSHostingView(rootView: rootView))
     }

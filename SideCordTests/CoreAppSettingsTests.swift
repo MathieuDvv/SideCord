@@ -10,6 +10,7 @@ final class CoreAppSettingsTests: XCTestCase {
 
         XCTAssertEqual(settings.sidebarEdge, .right)
         XCTAssertTrue(settings.edgeHoverEnabled)
+        XCTAssertTrue(settings.notificationGlowEnabled)
         XCTAssertEqual(settings.hoverDwellDelay, 0.25, accuracy: 0.001)
         XCTAssertEqual(settings.retractionDelay, 0.7, accuracy: 0.001)
         XCTAssertEqual(settings.sidebarWidth, 420, accuracy: 0.001)
@@ -38,6 +39,7 @@ final class CoreAppSettingsTests: XCTestCase {
 
         settings.sidebarEdge = .left
         settings.edgeHoverEnabled = false
+        settings.notificationGlowEnabled = false
         settings.hoverDwellDelay = 0.4
         settings.retractionDelay = 1.2
         settings.sidebarWidth = 512
@@ -67,6 +69,7 @@ final class CoreAppSettingsTests: XCTestCase {
         let restored = AppSettings(defaults: defaults)
         XCTAssertEqual(restored.sidebarEdge, .left)
         XCTAssertFalse(restored.edgeHoverEnabled)
+        XCTAssertFalse(restored.notificationGlowEnabled)
         XCTAssertEqual(restored.hoverDwellDelay, 0.4, accuracy: 0.001)
         XCTAssertEqual(restored.retractionDelay, 1.2, accuracy: 0.001)
         XCTAssertEqual(restored.sidebarWidth, 512, accuracy: 0.001)
@@ -389,6 +392,7 @@ final class CoreAppSettingsTests: XCTestCase {
         let settings = AppSettings(defaults: defaults)
         settings.sidebarEdge = .left
         settings.edgeHoverEnabled = false
+        settings.notificationGlowEnabled = false
         settings.sidebarWidth = 800
         settings.sidebarInset = 44
         settings.cssPreset = .standard
@@ -413,6 +417,7 @@ final class CoreAppSettingsTests: XCTestCase {
         let restored = AppSettings(defaults: defaults)
         XCTAssertEqual(restored.sidebarEdge, .right)
         XCTAssertTrue(restored.edgeHoverEnabled)
+        XCTAssertTrue(restored.notificationGlowEnabled)
         XCTAssertEqual(restored.sidebarWidth, 420, accuracy: 0.001)
         XCTAssertEqual(restored.sidebarInset, 16, accuracy: 0.001)
         XCTAssertEqual(restored.cssPreset, .compact)

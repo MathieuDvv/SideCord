@@ -25,6 +25,45 @@ final class PanelGeometryTests: XCTestCase {
         XCTAssertFalse(panel.becomesKeyOnlyIfNeeded)
     }
 
+    @MainActor
+    func testAttentionGlowPanelIsClickThroughAndNeverTakesFocus() {
+        let panel = AttentionGlowPanel()
+
+        XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel))
+        XCTAssertTrue(panel.ignoresMouseEvents)
+        XCTAssertFalse(panel.canBecomeKey)
+        XCTAssertFalse(panel.canBecomeMain)
+        XCTAssertFalse(panel.hasShadow)
+        XCTAssertEqual(panel.collectionBehavior, FloatingPanelSpacePolicy.collectionBehavior)
+    }
+
+    func testAttentionCallIsAcknowledgedUntilThatCallEnds() {
+        var state = AttentionGlowCallState()
+
+        state.update(isActive: true, sidebarIsVisible: false)
+        XCTAssertTrue(state.shouldPresent)
+
+        state.acknowledge()
+        XCTAssertFalse(state.shouldPresent)
+
+        state.update(isActive: true, sidebarIsVisible: false)
+        XCTAssertFalse(state.shouldPresent)
+
+        state.update(isActive: false, sidebarIsVisible: false)
+        state.update(isActive: true, sidebarIsVisible: false)
+        XCTAssertTrue(state.shouldPresent)
+    }
+
+    func testCallBeginningWhileSidebarIsVisibleStartsAcknowledged() {
+        var state = AttentionGlowCallState()
+
+        state.update(isActive: true, sidebarIsVisible: true)
+
+        XCTAssertTrue(state.isActive)
+        XCTAssertTrue(state.isAcknowledged)
+        XCTAssertFalse(state.shouldPresent)
+    }
+
     func testRightSidebarAnchorsToUsableFrame() {
         let usable = NSRect(x: 0, y: 40, width: 1_440, height: 860)
         let frame = PanelGeometry.sidebarFrame(
@@ -176,5 +215,17 @@ final class PanelGeometryTests: XCTestCase {
         XCTAssertEqual(right.minY, visible.minY)
         XCTAssertEqual(left.height, visible.height)
         XCTAssertEqual(right.height, visible.height)
+    }
+
+    func testAttentionGlowUsesTheFullPhysicalEdgeWithoutReachingPastIt() {
+        let screen = NSRect(x: -1_920, y: -120, width: 1_920, height: 1_200)
+
+        let left = PanelGeometry.attentionGlowFrame(in: screen, edge: .left)
+        let right = PanelGeometry.attentionGlowFrame(in: screen, edge: .right)
+
+        XCTAssertEqual(left, NSRect(x: -1_920, y: -120, width: 72, height: 1_200))
+        XCTAssertEqual(right, NSRect(x: -72, y: -120, width: 72, height: 1_200))
+        XCTAssertEqual(left.minX, screen.minX)
+        XCTAssertEqual(right.maxX, screen.maxX)
     }
 }

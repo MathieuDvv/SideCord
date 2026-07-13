@@ -11,12 +11,14 @@
 		112F301D2E45F17C2A8E8574 /* ShortcutRecorderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B6135006C4426CE790E2CD4 /* ShortcutRecorderView.swift */; };
 		225671F3D6E40B74C1E9E800 /* SidebarRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D068EEE7F44553E1B5C5BA /* SidebarRootView.swift */; };
 		24D3FEBD29916F1D106B87A1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DFFB4809E2F1E8AF528FD5C2 /* Assets.xcassets */; };
+		3EDBA9F5931F2A2EAF41B5FA /* AttentionGlowPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0AAE581210E10604A6FB2EC /* AttentionGlowPanel.swift */; };
 		3F1DE7570A86636A971B6C3A /* EdgeMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6244273205DA2723780050A4 /* EdgeMonitor.swift */; };
 		4471AA5321A1E3C124B17277 /* WebURLPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B486942BB37F2D72F19CD8D5 /* WebURLPolicyTests.swift */; };
 		534ED47D8B8B6FC3FF25FF40 /* DiscordWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61039269BE7CFBF597DB7A35 /* DiscordWebView.swift */; };
 		56DE53D54B210D0ADF7D19C7 /* PanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D79657C76635E040A90277DA /* PanelController.swift */; };
 		62843581F9826A74E335998F /* visual-themes.css in Resources */ = {isa = PBXBuildFile; fileRef = D36FB1A1E203D85D13BA5AC8 /* visual-themes.css */; };
 		66C63CCBDFBD8E2AF79E26B3 /* LaunchAtLoginController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A9C3AB9E48E1E1536B99CF /* LaunchAtLoginController.swift */; };
+		6B00B1955CC7CB9CE1F51769 /* AttentionGlowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41CAEE115E63FBFBE4868BD0 /* AttentionGlowController.swift */; };
 		6C127AA385617451436DFC26 /* WebConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 579F9593110E18A8E4C12690 /* WebConfigurationTests.swift */; };
 		76FA45A253551A08347D46EB /* WebCSSComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0111BB6AD26D6EDB52EF5465 /* WebCSSComposerTests.swift */; };
 		77B00938AB744BB5E63E4ADE /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FE259502BF0C9EBBD9F3E91 /* AppSettings.swift */; };
@@ -32,6 +34,7 @@
 		B12605E70EB49619A8BC760D /* DiscordRailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2B69BE797AC06674F7BA91 /* DiscordRailView.swift */; };
 		B7F3F92C6FB38E6EA5D47016 /* DiscordRailModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E731C450A73565ECCC975950 /* DiscordRailModel.swift */; };
 		C771692B6FED98F043724D14 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE13AD42D6D002D891E3525D /* main.swift */; };
+		D53670E7C2EF871ABCD66855 /* DiscordAttentionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 046D041991C877F34DE4EE1E /* DiscordAttentionModel.swift */; };
 		DB8D147611F3285B0A1D1156 /* CoreAppSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC412FB4CE970C45F77E41B0 /* CoreAppSettingsTests.swift */; };
 		DC1890CE3E0FC925B0A003B8 /* CoreShortcutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9811CB4C4754954FC2B8DF4C /* CoreShortcutTests.swift */; };
 		EED0F62940AB7566E5DC18D1 /* DiscordRailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFAD40A7C4FFB8CB40A5B4A1 /* DiscordRailPanel.swift */; };
@@ -55,8 +58,10 @@
 /* Begin PBXFileReference section */
 		00D34938805EE59748F86C5B /* PanelGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelGeometryTests.swift; sourceTree = "<group>"; };
 		0111BB6AD26D6EDB52EF5465 /* WebCSSComposerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebCSSComposerTests.swift; sourceTree = "<group>"; };
+		046D041991C877F34DE4EE1E /* DiscordAttentionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordAttentionModel.swift; sourceTree = "<group>"; };
 		0FE259502BF0C9EBBD9F3E91 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		17C71E8850A77D86E0257444 /* SideCord.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SideCord.entitlements; sourceTree = "<group>"; };
+		41CAEE115E63FBFBE4868BD0 /* AttentionGlowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionGlowController.swift; sourceTree = "<group>"; };
 		4510E86C4AA17733B38F0DB4 /* SideCord.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SideCord.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		48B6934723B549D0042B8C82 /* WebCSSRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebCSSRuntimeTests.swift; sourceTree = "<group>"; };
 		54C163D82640C73FE4324A31 /* layout-mods.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = "layout-mods.css"; sourceTree = "<group>"; };
@@ -81,6 +86,7 @@
 		C165A6257A6E849696AF121E /* DiscordWebController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscordWebController.swift; sourceTree = "<group>"; };
 		C3C5FDD9325DB07FE6C52689 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		CC412FB4CE970C45F77E41B0 /* CoreAppSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreAppSettingsTests.swift; sourceTree = "<group>"; };
+		D0AAE581210E10604A6FB2EC /* AttentionGlowPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionGlowPanel.swift; sourceTree = "<group>"; };
 		D1AF244C8E60058FE310DD0B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		D36FB1A1E203D85D13BA5AC8 /* visual-themes.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = "visual-themes.css"; sourceTree = "<group>"; };
 		D79657C76635E040A90277DA /* PanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelController.swift; sourceTree = "<group>"; };
@@ -143,6 +149,7 @@
 			isa = PBXGroup;
 			children = (
 				7C1E88D3D33255F6FA26FE7E /* AuthenticationPopupController.swift */,
+				046D041991C877F34DE4EE1E /* DiscordAttentionModel.swift */,
 				8B02959E6BF45625FC40C506 /* DiscordCSSComposer.swift */,
 				E731C450A73565ECCC975950 /* DiscordRailModel.swift */,
 				DB49E566A2032D3024B1902F /* DiscordURLPolicy.swift */,
@@ -166,6 +173,8 @@
 		9933081A870020381AC6C40A /* Panel */ = {
 			isa = PBXGroup;
 			children = (
+				41CAEE115E63FBFBE4868BD0 /* AttentionGlowController.swift */,
+				D0AAE581210E10604A6FB2EC /* AttentionGlowPanel.swift */,
 				AFAD40A7C4FFB8CB40A5B4A1 /* DiscordRailPanel.swift */,
 				6E2B69BE797AC06674F7BA91 /* DiscordRailView.swift */,
 				6244273205DA2723780050A4 /* EdgeMonitor.swift */,
@@ -317,7 +326,10 @@
 			files = (
 				B0C96E2ACDC63D240946B520 /* AppDelegate.swift in Sources */,
 				77B00938AB744BB5E63E4ADE /* AppSettings.swift in Sources */,
+				6B00B1955CC7CB9CE1F51769 /* AttentionGlowController.swift in Sources */,
+				3EDBA9F5931F2A2EAF41B5FA /* AttentionGlowPanel.swift in Sources */,
 				A5486856E3807EC9B2921E48 /* AuthenticationPopupController.swift in Sources */,
+				D53670E7C2EF871ABCD66855 /* DiscordAttentionModel.swift in Sources */,
 				AEE5DE321B445143583FE2C8 /* DiscordCSSComposer.swift in Sources */,
 				B7F3F92C6FB38E6EA5D47016 /* DiscordRailModel.swift in Sources */,
 				EED0F62940AB7566E5DC18D1 /* DiscordRailPanel.swift in Sources */,

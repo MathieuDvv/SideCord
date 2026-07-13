@@ -96,6 +96,7 @@ final class DiscordWebController: NSObject, ObservableObject {
 
     let webView: WKWebView
     lazy private(set) var railModel = DiscordRailModel(controller: self)
+    let attentionModel = DiscordAttentionModel()
 
     private let settings: AppSettings
     private let compactPresetCSS: String
@@ -195,6 +196,7 @@ final class DiscordWebController: NSObject, ObservableObject {
         )
         isRuntimeMessageHandlerInstalled = false
         railModel.reset()
+        attentionModel.reset()
     }
 
     /// Rebuilds the document-end user script and applies it to the currently
@@ -283,6 +285,13 @@ final class DiscordWebController: NSObject, ObservableObject {
         )
         let contentController = webView.configuration.userContentController
         contentController.removeAllUserScripts()
+        contentController.addUserScript(
+            WKUserScript(
+                source: DiscordCSSComposer.notificationBridgeUserScriptSource(),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
         contentController.addUserScript(
             WKUserScript(
                 source: source,
@@ -508,6 +517,20 @@ extension DiscordWebController: WKScriptMessageHandler {
 
         if type == "rail", let items = payload["items"] {
             railModel.receive(messageItems: items)
+            attentionModel.receiveRailItems(railModel.items)
+            return
+        }
+
+        if type == "incomingCall",
+           let number = payload["active"] as? NSNumber,
+           CFGetTypeID(number) == CFBooleanGetTypeID() {
+            let active = number.boolValue
+            attentionModel.setIncomingCallActive(active)
+            return
+        }
+
+        if type == "notification" {
+            attentionModel.receiveNotification()
             return
         }
 
@@ -616,6 +639,7 @@ extension DiscordWebController: WKNavigationDelegate {
         runtimeDocumentGeneration += 1
         runtimeActions.markLoading()
         railModel.reset()
+        attentionModel.reset()
         error = nil
         isLoading = true
         synchronizeNavigationState()
@@ -655,6 +679,7 @@ extension DiscordWebController: WKNavigationDelegate {
         runtimeDocumentGeneration += 1
         runtimeActions.markLoading()
         railModel.reset()
+        attentionModel.reset()
         error = DiscordWebError(
             kind: .webContentProcess,
             message: "Discord's web content stopped unexpectedly."

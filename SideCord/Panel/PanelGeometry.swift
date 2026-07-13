@@ -7,6 +7,7 @@ enum PanelGeometry {
     static let railWidth: CGFloat = 76
     static let railGap: CGFloat = 12
     static let railVerticalInset: CGFloat = 12
+    static let attentionGlowWidth: CGFloat = 72
 
     static func displayID(for screen: NSScreen) -> String {
         let key = NSDeviceDescriptionKey("NSScreenNumber")
@@ -108,6 +109,22 @@ enum PanelGeometry {
             frame.origin.x = screenFrame.maxX + hiddenOvershoot
         }
         return frame
+    }
+
+    static func attentionGlowFrame(
+        in screenFrame: NSRect,
+        edge: SidebarEdge,
+        requestedWidth: CGFloat = attentionGlowWidth
+    ) -> NSRect {
+        let safeWidth = requestedWidth.isFinite
+            ? min(max(1, requestedWidth), max(1, screenFrame.width))
+            : min(attentionGlowWidth, max(1, screenFrame.width))
+        return NSRect(
+            x: edge == .left ? screenFrame.minX : screenFrame.maxX - safeWidth,
+            y: screenFrame.minY,
+            width: safeWidth,
+            height: max(1, screenFrame.height)
+        )
     }
 
     static func screen(containing point: NSPoint, from screens: [NSScreen]) -> NSScreen? {

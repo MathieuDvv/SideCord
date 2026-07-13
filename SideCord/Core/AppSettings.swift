@@ -25,6 +25,12 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(edgeHoverEnabled, forKey: Keys.edgeHoverEnabled) }
     }
 
+    @Published var notificationGlowEnabled: Bool {
+        didSet {
+            defaults.set(notificationGlowEnabled, forKey: Keys.notificationGlowEnabled)
+        }
+    }
+
     @Published var hoverDwellDelay: TimeInterval {
         didSet {
             let validated = Self.validatedDelay(
@@ -183,6 +189,11 @@ final class AppSettings: ObservableObject {
             in: defaults,
             defaultValue: true
         )
+        notificationGlowEnabled = Self.bool(
+            forKey: Keys.notificationGlowEnabled,
+            in: defaults,
+            defaultValue: true
+        )
         hoverDwellDelay = Self.validatedDelay(
             Self.double(forKey: Keys.hoverDwellDelay, in: defaults)
                 ?? Self.defaultHoverDwellDelay,
@@ -272,6 +283,8 @@ final class AppSettings: ObservableObject {
         // Repair normalized values on load so a corrupt preference does not
         // repeatedly fall through to a different in-memory value every launch.
         defaults.set(sidebarEdge.rawValue, forKey: Keys.sidebarEdge)
+        defaults.set(edgeHoverEnabled, forKey: Keys.edgeHoverEnabled)
+        defaults.set(notificationGlowEnabled, forKey: Keys.notificationGlowEnabled)
         defaults.set(hoverDwellDelay, forKey: Keys.hoverDwellDelay)
         defaults.set(retractionDelay, forKey: Keys.retractionDelay)
         defaults.set(Double(sidebarWidth), forKey: Keys.sidebarWidth)
@@ -353,6 +366,7 @@ final class AppSettings: ObservableObject {
     func resetToDefaults() {
         sidebarEdge = .right
         edgeHoverEnabled = true
+        notificationGlowEnabled = true
         hoverDwellDelay = Self.defaultHoverDwellDelay
         retractionDelay = Self.defaultRetractionDelay
         sidebarWidth = Self.defaultSidebarWidth
@@ -469,6 +483,7 @@ final class AppSettings: ObservableObject {
     private enum Keys {
         static let sidebarEdge = "settings.sidebarEdge"
         static let edgeHoverEnabled = "settings.edgeHoverEnabled"
+        static let notificationGlowEnabled = "settings.notificationGlowEnabled"
         static let hoverDwellDelay = "settings.hoverDwellDelay"
         static let retractionDelay = "settings.retractionDelay"
         static let sidebarWidth = "settings.sidebarWidth"

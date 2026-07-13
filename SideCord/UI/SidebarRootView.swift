@@ -4,6 +4,7 @@ struct SidebarRootView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var webController: DiscordWebController
     @ObservedObject var panelController: PanelController
+    let onOpenSettings: () -> Void
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -43,6 +44,23 @@ struct SidebarRootView: View {
                 }
                 .help("Show or hide Discord channels")
                 .accessibilityLabel("Toggle Discord navigation drawer")
+            }
+
+            if settings.discordLayoutOptions.navigationPresentation != .docked {
+                Button {
+                    settings.floatingRailEnabled.toggle()
+                } label: {
+                    Image(systemName: settings.floatingRailEnabled
+                          ? "square.grid.2x2.fill"
+                          : "square.grid.2x2")
+                        .frame(width: 24, height: 24)
+                }
+                .help(settings.floatingRailEnabled
+                      ? "Hide the floating server rail"
+                      : "Show the floating server rail")
+                .accessibilityLabel(settings.floatingRailEnabled
+                                    ? "Hide floating server rail"
+                                    : "Show floating server rail")
             }
 
             Button {
@@ -155,6 +173,13 @@ struct SidebarRootView: View {
             .fixedSize()
             .help("SideCord options")
             .accessibilityLabel("SideCord options")
+
+            Button(action: onOpenSettings) {
+                Image(systemName: "gearshape")
+                    .frame(width: 24, height: 24)
+            }
+            .help("Open SideCord Settings")
+            .accessibilityLabel("Open SideCord Settings")
 
             Button {
                 panelController.retract()

@@ -291,6 +291,16 @@ struct SettingsView: View {
                         .number.precision(.fractionLength(1))
                     ) + " s"
                 )
+
+                SettingsDivider()
+
+                SettingsToggleRow(
+                    title: "Glow for Discord activity",
+                    detail: "Pulses for new activity and breathes while an incoming call rings.",
+                    symbol: "sparkles",
+                    tint: .indigo,
+                    isOn: $settings.notificationGlowEnabled
+                )
             }
         }
     }

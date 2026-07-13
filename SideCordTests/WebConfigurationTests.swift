@@ -4,6 +4,81 @@ import XCTest
 
 final class WebConfigurationTests: XCTestCase {
     @MainActor
+    func testAttentionModelBaselinesExistingBadgesAndSignalsNewActivity() {
+        var currentTime: TimeInterval = 1_000
+        let model = DiscordAttentionModel(now: { currentTime })
+        let baseline = [
+            railItem(id: "direct-messages", unread: true, mentions: 2),
+            railItem(id: "server:1", unread: false, mentions: nil)
+        ]
+
+        model.receiveRailItems(baseline)
+        XCTAssertEqual(model.notificationSequence, 0)
+
+        model.receiveRailItems(baseline)
+        XCTAssertEqual(model.notificationSequence, 0)
+
+        model.receiveRailItems([
+            railItem(id: "direct-messages", unread: true, mentions: 2),
+            railItem(id: "server:1", unread: true, mentions: nil)
+        ])
+        XCTAssertEqual(model.notificationSequence, 1)
+
+        // The HTML Notification event and its rail mutation are two views of
+        // the same delivery, so the short coalescing window keeps one pulse.
+        model.receiveNotification()
+        XCTAssertEqual(model.notificationSequence, 1)
+
+        currentTime += 1
+        model.receiveRailItems([
+            railItem(id: "direct-messages", unread: true, mentions: 3),
+            railItem(id: "server:1", unread: true, mentions: nil)
+        ])
+        XCTAssertEqual(model.notificationSequence, 2)
+
+        model.receiveRailItems([
+            railItem(id: "direct-messages", unread: true, mentions: 3),
+            railItem(id: "server:1", unread: true, mentions: nil)
+        ])
+        XCTAssertEqual(model.notificationSequence, 2)
+
+        model.receiveRailItems([
+            railItem(id: "direct-messages", unread: true, mentions: 3),
+            railItem(id: "server:2", unread: true, mentions: 4)
+        ])
+        XCTAssertEqual(model.notificationSequence, 2)
+
+        model.receiveRailItems([])
+        model.receiveRailItems([
+            railItem(id: "direct-messages", unread: true, mentions: 8),
+            railItem(id: "server:1", unread: true, mentions: nil)
+        ])
+        XCTAssertEqual(model.notificationSequence, 2)
+
+        model.receiveNotification()
+        XCTAssertEqual(model.notificationSequence, 2)
+
+        currentTime += 1
+        model.receiveNotification()
+        XCTAssertEqual(model.notificationSequence, 3)
+    }
+
+    @MainActor
+    func testAttentionModelResetsCallAndRebaselinesAfterNavigation() {
+        let model = DiscordAttentionModel()
+        model.receiveRailItems([railItem(id: "server:1", unread: false, mentions: nil)])
+        model.setIncomingCallActive(true)
+
+        XCTAssertTrue(model.isIncomingCallActive)
+
+        model.reset()
+        XCTAssertFalse(model.isIncomingCallActive)
+
+        model.receiveRailItems([railItem(id: "server:1", unread: true, mentions: 1)])
+        XCTAssertEqual(model.notificationSequence, 0)
+    }
+
+    @MainActor
     func testRailModelValidatesAndCapsBridgePayload() throws {
         let model = DiscordRailModel()
         model.receive(messageItems: [
@@ -174,6 +249,22 @@ final class WebConfigurationTests: XCTestCase {
         XCTAssertEqual(
             configuration.applicationNameForUserAgent,
             DiscordWebConfiguration.safariUserAgentSuffix
+        )
+    }
+
+    private func railItem(
+        id: String,
+        unread: Bool,
+        mentions: Int?
+    ) -> DiscordRailItem {
+        DiscordRailItem(
+            id: id,
+            title: id,
+            iconURL: nil,
+            kind: id == "direct-messages" ? .directMessages : .server,
+            isSelected: false,
+            hasUnread: unread,
+            mentionCount: mentions
         )
     }
 }

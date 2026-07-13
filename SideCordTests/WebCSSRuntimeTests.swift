@@ -4,6 +4,135 @@ import XCTest
 
 @MainActor
 final class WebCSSRuntimeTests: XCTestCase {
+    func testIncomingCallBridgeTracksOnlyIncomingRingingState() async throws {
+        let recorder = RuntimeMessageRecorder()
+        let (webView, navigationWaiter) = try await loadFixture(messageRecorder: recorder)
+        _ = navigationWaiter
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.userScriptSource(
+                css: try runtimeCSS(customCSS: ""),
+                configuration: makeConfiguration(navigation: .docked, composer: .full)
+            )
+        )
+        try await waitForRuntime()
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const outgoing = document.createElement('div');
+              outgoing.id = 'outgoing-call';
+              outgoing.className = 'ringingOutgoing_fixture';
+              document.body.appendChild(outgoing);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertTrue(recorder.incomingCallStates.isEmpty)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const incoming = document.createElement('div');
+              incoming.id = 'incoming-call';
+              incoming.className = 'ringingIncoming_fixture';
+              document.body.appendChild(incoming);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.incomingCallStates, [true])
+
+        _ = try await webView.evaluateJavaScript(
+            "document.getElementById('incoming-call').classList.add('rerender_fixture')"
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.incomingCallStates, [true])
+
+        _ = try await webView.evaluateJavaScript(
+            "document.getElementById('incoming-call').remove()"
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.incomingCallStates, [true, false])
+    }
+
+    func testNotificationBridgeReportsNoNotificationContentAndPreservesConstructor() async throws {
+        let recorder = RuntimeMessageRecorder()
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController.add(
+            recorder,
+            name: DiscordCSSComposer.messageHandlerName
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: """
+                (() => {
+                  class FixtureNotification {
+                    constructor(title) {
+                      if (title === 'throw') throw new Error('fixture failure');
+                      this.title = title;
+                    }
+                    static permission = 'granted';
+                    static requestPermission() { return Promise.resolve('granted'); }
+                  }
+                  window.Notification = FixtureNotification;
+                  window.fixtureOriginalNotification = FixtureNotification;
+                })();
+                """,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: DiscordCSSComposer.notificationBridgeUserScriptSource(),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let loaded = expectation(description: "Notification bridge fixture loaded")
+        let navigationWaiter = RuntimeNavigationWaiter { loaded.fulfill() }
+        webView.navigationDelegate = navigationWaiter
+        webView.loadHTMLString(
+            "<!doctype html><html><body></body></html>",
+            baseURL: URL(string: "https://discord.com/app")!
+        )
+        await fulfillment(of: [loaded], timeout: 5)
+
+        let state = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const instance = new Notification('private title', { body: 'private body' });
+              return {
+                isOriginalInstance: instance instanceof window.fixtureOriginalNotification,
+                permission: Notification.permission,
+                requestPermissionPreserved:
+                  Notification.requestPermission ===
+                    window.fixtureOriginalNotification.requestPermission
+              };
+            })()
+            """
+        ) as! [String: Any]
+        try await waitForRuntime()
+
+        XCTAssertEqual(state["isOriginalInstance"] as? Bool, true)
+        XCTAssertEqual(state["permission"] as? String, "granted")
+        XCTAssertEqual(state["requestPermissionPreserved"] as? Bool, true)
+        XCTAssertEqual(recorder.notificationPayloads.count, 1)
+        XCTAssertEqual(Set(recorder.notificationPayloads[0].keys), ["type"])
+
+        do {
+            _ = try await webView.evaluateJavaScript("new Notification('throw')")
+            XCTFail("Expected the fixture notification constructor to throw")
+        } catch {
+            // A failed constructor must not produce a native attention event.
+        }
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 1)
+        _ = navigationWaiter
+    }
+
     func testFloatingRailBridgeUsesLiveDiscordNodesAndSurvivesRerenders() async throws {
         let recorder = RuntimeMessageRecorder()
         let (webView, navigationWaiter) = try await loadFixture(messageRecorder: recorder)
@@ -755,6 +884,17 @@ private final class RuntimeMessageRecorder: NSObject, WKScriptMessageHandler {
     var latestRailItems: [[String: Any]]? {
         messages.reversed().first(where: { $0["type"] as? String == "rail" })?["items"]
             as? [[String: Any]]
+    }
+
+    var incomingCallStates: [Bool] {
+        messages.compactMap { payload in
+            guard payload["type"] as? String == "incomingCall" else { return nil }
+            return payload["active"] as? Bool
+        }
+    }
+
+    var notificationPayloads: [[String: Any]] {
+        messages.filter { $0["type"] as? String == "notification" }
     }
 
     func userContentController(
