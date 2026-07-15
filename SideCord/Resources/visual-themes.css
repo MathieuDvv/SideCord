@@ -30,6 +30,45 @@ html[data-sidecord-accent]:not([data-sidecord-accent="automatic"]) {
     white 10%,
     var(--sidecord-accent-color)
   ) !important;
+  --button-filled-brand-text: #ffffff !important;
+}
+
+/* Accent colors are decorative; filled controls still need readable labels.
+   Bright accents are darkened in light mode instead of placing white text on
+   green, orange, or white. White remains available for surfaces and glow. */
+html[data-sidecord-accent]:not([data-sidecord-accent="automatic"])
+  [data-sidecord-theme-scope="light"],
+html[data-sidecord-accent]:not([data-sidecord-accent="automatic"])[data-sidecord-resolved-color-scheme="light"] {
+  --sidecord-control-accent: color-mix(in srgb, black 38%, var(--sidecord-accent-color));
+  --button-filled-brand-background: var(--sidecord-control-accent) !important;
+  --button-filled-brand-background-hover: color-mix(
+    in srgb,
+    black 12%,
+    var(--sidecord-control-accent)
+  ) !important;
+}
+
+html[data-sidecord-accent]:not([data-sidecord-accent="automatic"])[data-sidecord-resolved-color-scheme="dark"] {
+  --sidecord-control-accent: color-mix(in srgb, white 8%, var(--sidecord-accent-color));
+}
+
+html[data-sidecord-accent="white"][data-sidecord-resolved-color-scheme="light"] {
+  --brand-500: #4752c4 !important;
+  --brand-560: #3f48ad !important;
+  --brand-600: #373f98 !important;
+  --text-brand: #3f48ad !important;
+  --button-filled-brand-background: #4752c4 !important;
+  --button-filled-brand-background-hover: #3f48ad !important;
+  --sidecord-control-accent: #4752c4;
+}
+
+html[data-sidecord-accent="white"][data-sidecord-resolved-color-scheme="dark"] {
+  --brand-500: #dfe1e5 !important;
+  --text-brand: #ffffff !important;
+  --button-filled-brand-background: #dfe1e5 !important;
+  --button-filled-brand-background-hover: #ffffff !important;
+  --button-filled-brand-text: #111214 !important;
+  --sidecord-control-accent: #dfe1e5;
 }
 
 /* Theme targets. The Discord preset remains a true no-op when Color Scheme is
@@ -123,7 +162,7 @@ html:is(
   --sidecord-native-input: #383a40;
   --sidecord-native-border: #3f4147;
   --sidecord-theme-text: #f2f3f5;
-  --sidecord-theme-text-muted: #aeb3bd;
+  --sidecord-theme-text-muted: #b8bdc7;
   --sidecord-theme-header: #ffffff;
   --sidecord-theme-interactive: #c7c9ce;
 }
@@ -141,8 +180,8 @@ html:is(
   --sidecord-native-elevated: #ffffff;
   --sidecord-native-input: #ebedef;
   --sidecord-native-border: #d4d7dc;
-  --sidecord-theme-text: #2e3338;
-  --sidecord-theme-text-muted: #5c6370;
+  --sidecord-theme-text: #1f2328;
+  --sidecord-theme-text-muted: #4b5563;
   --sidecord-theme-header: #111214;
   --sidecord-theme-interactive: #3f454d;
 }
@@ -263,6 +302,21 @@ html:is(
   --interactive-normal: var(--sidecord-theme-interactive) !important;
   --interactive-hover: var(--sidecord-theme-text) !important;
   --interactive-active: var(--sidecord-theme-header) !important;
+  --interactive-muted: color-mix(
+    in srgb,
+    var(--sidecord-theme-text-muted) 72%,
+    var(--sidecord-surface-primary)
+  ) !important;
+  --control-brand-foreground: var(
+    --sidecord-control-accent,
+    var(--sidecord-accent-color)
+  ) !important;
+  --switch-background-default: var(--interactive-muted) !important;
+  --switch-background-active: var(
+    --sidecord-control-accent,
+    var(--brand-500)
+  ) !important;
+  --switch-knob-background: var(--sidecord-theme-header) !important;
   --channels-default: var(--sidecord-theme-text-muted) !important;
   --channel-icon: var(--sidecord-theme-text-muted) !important;
   --icon-primary: var(--sidecord-theme-interactive) !important;

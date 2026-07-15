@@ -120,6 +120,7 @@ enum SideCordAccent: String, CaseIterable, Codable, Identifiable, Sendable {
     case pink
     case green
     case orange
+    case white
 
     var id: Self { self }
 
@@ -132,6 +133,102 @@ enum SideCordAccent: String, CaseIterable, Codable, Identifiable, Sendable {
         case .pink: "Pink"
         case .green: "Green"
         case .orange: "Orange"
+        case .white: "White"
+        }
+    }
+
+    var colorDescriptor: SideCordColorDescriptor {
+        switch self {
+        case .automatic, .blurple: .init(red: 88, green: 101, blue: 242)
+        case .blue: .init(red: 10, green: 132, blue: 255)
+        case .purple: .init(red: 175, green: 82, blue: 222)
+        case .pink: .init(red: 255, green: 45, blue: 85)
+        case .green: .init(red: 48, green: 209, blue: 88)
+        case .orange: .init(red: 255, green: 159, blue: 10)
+        case .white: .init(red: 255, green: 255, blue: 255)
+        }
+    }
+}
+
+struct SideCordColorDescriptor: Equatable, Sendable {
+    let red: Int
+    let green: Int
+    let blue: Int
+
+    var redUnit: Double { Double(red) / 255 }
+    var greenUnit: Double { Double(green) / 255 }
+    var blueUnit: Double { Double(blue) / 255 }
+    var cssHex: String { String(format: "#%02x%02x%02x", red, green, blue) }
+    var cssRGB: String { "\(red) \(green) \(blue)" }
+}
+
+enum AttentionGlowColor: String, CaseIterable, Codable, Identifiable, Sendable {
+    case followTheme
+    case blurple
+    case blue
+    case purple
+    case pink
+    case green
+    case orange
+    case white
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .followTheme: "Follow Theme"
+        case .blurple: "Blurple"
+        case .blue: "Blue"
+        case .purple: "Purple"
+        case .pink: "Pink"
+        case .green: "Green"
+        case .orange: "Orange"
+        case .white: "White"
+        }
+    }
+
+    func resolvedAccent(themeAccent: SideCordAccent) -> SideCordAccent {
+        switch self {
+        case .followTheme: themeAccent
+        case .blurple: .blurple
+        case .blue: .blue
+        case .purple: .purple
+        case .pink: .pink
+        case .green: .green
+        case .orange: .orange
+        case .white: .white
+        }
+    }
+}
+
+enum AttentionGlowStrength: String, CaseIterable, Codable, Identifiable, Sendable {
+    case subtle
+    case normal
+    case strong
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .subtle: "Subtle"
+        case .normal: "Normal"
+        case .strong: "Strong"
+        }
+    }
+
+    var intensity: Double {
+        switch self {
+        case .subtle: 0.68
+        case .normal: 1
+        case .strong: 1.8
+        }
+    }
+
+    var glowWidth: CGFloat {
+        switch self {
+        case .subtle: 58
+        case .normal: 72
+        case .strong: 136
         }
     }
 }

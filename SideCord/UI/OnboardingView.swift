@@ -548,7 +548,7 @@ private struct AccentSelectionButton: View {
                     if isSelected {
                         Image(systemName: "checkmark")
                             .font(.caption.bold())
-                            .foregroundStyle(.white)
+                            .foregroundStyle(accent == .white ? .black : .white)
                     }
                 }
                 Text(accent.title)
@@ -618,13 +618,11 @@ private extension DiscordVisualTheme {
 
 private extension SideCordAccent {
     var onboardingColor: Color {
-        switch self {
-        case .automatic, .blurple: Color(red: 0.35, green: 0.40, blue: 0.95)
-        case .blue: .blue
-        case .purple: .purple
-        case .pink: .pink
-        case .green: .green
-        case .orange: .orange
-        }
+        let descriptor = colorDescriptor
+        return Color(
+            red: descriptor.redUnit,
+            green: descriptor.greenUnit,
+            blue: descriptor.blueUnit
+        )
     }
 }

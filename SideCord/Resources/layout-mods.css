@@ -24,6 +24,48 @@
   }
 }
 
+/* Discord's static Nitro artwork occasionally fails in WebKit while its hover
+   animation remains available. Replace only a confirmed broken image, instead
+   of exposing the image's question-mark alt fallback. */
+[data-sidecord-nitro-broken-artwork] {
+  display: none !important;
+}
+
+[data-sidecord-nitro-icon-fallback]::before {
+  content: "✦";
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  color: var(--brand-500, #5865f2);
+  font: 700 20px/1 var(--font-primary, "gg sans", sans-serif);
+}
+
+/* Discord now serves the idle and hover Nitro artwork through different
+   renderers. WebKit can successfully load the idle renderer and still display
+   its placeholder glyph, so use a stable mark for the semantic icon slot while
+   idle and restore Discord's animated artwork on hover/focus. */
+[data-sidecord-nitro-link]:not(:hover):not(:focus-visible)
+  [data-sidecord-nitro-static-artwork] {
+  display: none !important;
+}
+
+[data-sidecord-nitro-static-wrapper]::before {
+  display: none;
+}
+
+[data-sidecord-nitro-link]:not(:hover):not(:focus-visible)
+  [data-sidecord-nitro-static-wrapper]::before {
+  content: "✦";
+  display: grid;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  color: var(--brand-500, #5865f2);
+  font: 700 20px/1 var(--font-primary, "gg sans", sans-serif);
+}
+
 html[data-sidecord-navigation="floating"],
 html[data-sidecord-navigation="hidden"] {
   --custom-guild-list-width: 0px;

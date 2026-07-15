@@ -24,8 +24,6 @@
 
 SideCord lives in the menu bar and reveals a resizable Discord panel from the left or right edge of any display. It follows you across Spaces, remembers each display's width, and keeps the web session alive when the panel retracts.
 
-> The packaged DMG may trail the current source. The notification edge glow described below is available on `main` and will be included in the next packaged release.
-
 <table>
   <tr>
     <td width="33%"><strong>Edge-native</strong><br>Hover at the configured edge or use a global shortcut. SideCord appears on the display you are using.</td>
@@ -39,12 +37,20 @@ SideCord lives in the menu bar and reveals a resizable Discord panel from the le
 New Discord activity produces a soft light on the configured screen edge. It grows from the middle, fades before reaching either corner, and dissolves without interrupting what you are doing.
 
 - Normal notifications pulse once, then disappear softly.
+- Rapid notifications restart the pulse instead of being time-coalesced, so later deliveries are not dropped.
 - Incoming calls keep a gentle breathing glow until you open SideCord or the ringing ends.
+- An optional detached call card shows the transient caller or group name with Answer and Decline. If Discord's controls cannot be matched safely, SideCord opens the call UI instead.
 - Revealing SideCord acknowledges the current call, so the glow does not return when the same call is still ringing.
 - The glow follows your selected accent, works on either edge, remains click-through, and respects macOS Reduce Motion.
-- The attention signal itself carries only an event or ringing boolean. The separate floating-rail bridge carries server IDs, names, icons, selection, and unread state; neither bridge carries message text, senders, channel names, or notification content.
+- Ordinary attention signals carry only an event boolean. While a call is visibly ringing, the call bridge additionally carries a bounded display name and transient call identifier in memory. The separate floating-rail bridge carries server IDs, names, icons, selection, and unread state; no bridge carries message text, senders, channel names, or notification content.
 
 You can turn the effect off at any time in **Settings → Sidebar → Glow for Discord activity**.
+
+## Onboarding and settings
+
+First launch now happens in place: the active display dims transparently, the configured edge glows, and the real SideCord panel slides in with Discord's existing sign-in flow. After sign-in—or by choosing to continue without it—a detached setup card guides you through placement, layout, appearance, and launch behavior one focused step at a time. Choosing **Finish** or clicking the backdrop saves those choices and retracts SideCord.
+
+SideCord's controls live inside Discord's own settings screen under a native-styled **SideCord** category in the left navigation. Selecting it keeps Discord's settings shell in place and changes only the right-hand settings content; SideCord doesn't open a separate settings surface.
 
 ## Highlights
 
@@ -52,8 +58,11 @@ You can turn the effect off at any time in **Settings → Sidebar → Glow for D
 - Edge-hover reveal plus configurable panel and navigation shortcuts
 - Left or right placement, floating inset, pinning, maximize/restore, and per-display widths
 - Full, Focus, Reader, and Custom layouts with an optional floating server rail
-- Direct Settings and floating-rail controls in the top pill
+- Settings integrated into Discord's native navigation, plus floating-rail controls in the top pill
 - System Glass, Discord, OLED, and Soft palettes with automatic or forced appearance
+- White and independent glow colors, three glow strengths, and native incoming-call controls
+- Declarative JSON plugins for reviewed themes, layouts, safe styles, and allow-listed commands
+- Signed marketplace catalog and package-hash verification when configured by a release build
 - Compact density, essential composer controls, and conservative local custom CSS
 - Native handling for attachments, downloads, camera, microphone, login popups, and QR login
 - Launch at Login and macOS Reduce Motion / Reduce Transparency support
@@ -120,5 +129,9 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 SideCord has no analytics and does not inspect Discord credentials or tokens. Its App Sandbox entitlements allow outgoing network access, files you explicitly select, and camera or microphone access only when Discord requests them for a call. See [PRIVACY.md](PRIVACY.md) for the complete policy.
 
 Discord can change its web interface or embedded-browser support at any time, so focused layout selectors and attention signals may occasionally need an update.
+
+## Plugins
+
+SideCord plugins are declarative JSON packages, not executable extensions. They can contribute validated styles, theme and layout recipes, and commands assembled from SideCord's built-in actions. They cannot run JavaScript or native code, inspect Discord content, access files, or make network requests. See [the plugin format and marketplace security model](docs/PLUGINS.md).
 
 <p align="center"><sub>SideCord is independent software and is not affiliated with Discord Inc.</sub></p>

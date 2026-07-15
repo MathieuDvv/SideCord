@@ -228,4 +228,71 @@ final class PanelGeometryTests: XCTestCase {
         XCTAssertEqual(left.minX, screen.minX)
         XCTAssertEqual(right.maxX, screen.maxX)
     }
+
+    func testStrongAttentionGlowHasMateriallyMoreReach() {
+        let screen = NSRect(x: 0, y: 0, width: 1_440, height: 900)
+        let normal = PanelGeometry.attentionGlowFrame(
+            in: screen,
+            edge: .right,
+            requestedWidth: AttentionGlowStrength.normal.glowWidth
+        )
+        let strong = PanelGeometry.attentionGlowFrame(
+            in: screen,
+            edge: .right,
+            requestedWidth: AttentionGlowStrength.strong.glowWidth
+        )
+
+        XCTAssertGreaterThan(AttentionGlowStrength.strong.intensity, 1.5)
+        XCTAssertGreaterThan(strong.width, normal.width * 1.75)
+        XCTAssertEqual(strong.maxX, screen.maxX)
+    }
+
+    func testIncomingCallCardIsCenteredAndDetachedFromEitherEdge() {
+        let screen = NSRect(x: -1440, y: 100, width: 1440, height: 900)
+        let left = PanelGeometry.incomingCallCardFrame(in: screen, edge: .left)
+        let right = PanelGeometry.incomingCallCardFrame(in: screen, edge: .right)
+
+        XCTAssertEqual(left.minX, screen.minX + PanelGeometry.incomingCallCardInset)
+        XCTAssertEqual(right.maxX, screen.maxX - PanelGeometry.incomingCallCardInset)
+        XCTAssertEqual(left.midY, screen.midY)
+        XCTAssertEqual(right.midY, screen.midY)
+        XCTAssertEqual(left.size, PanelGeometry.incomingCallCardSize)
+    }
+
+    func testOnboardingCompanionFloatsTowardTheDisplayCenter() {
+        let usable = NSRect(x: 0, y: 40, width: 1_440, height: 860)
+        let rightSidebar = NSRect(x: 1_004, y: 56, width: 420, height: 828)
+        let leftSidebar = NSRect(x: 16, y: 56, width: 420, height: 828)
+
+        let besideRight = PanelGeometry.onboardingCompanionFrame(
+            adjacentTo: rightSidebar,
+            in: usable,
+            edge: .right
+        )
+        let besideLeft = PanelGeometry.onboardingCompanionFrame(
+            adjacentTo: leftSidebar,
+            in: usable,
+            edge: .left
+        )
+
+        XCTAssertEqual(rightSidebar.minX - besideRight.maxX, PanelGeometry.onboardingCompanionGap)
+        XCTAssertEqual(besideLeft.minX - leftSidebar.maxX, PanelGeometry.onboardingCompanionGap)
+        XCTAssertTrue(usable.contains(besideRight))
+        XCTAssertTrue(usable.contains(besideLeft))
+    }
+
+    func testOnboardingCompanionStaysInsideACompactDisplay() {
+        let usable = NSRect(x: -300, y: 20, width: 300, height: 400)
+        let sidebar = NSRect(x: -240, y: 32, width: 228, height: 376)
+
+        let companion = PanelGeometry.onboardingCompanionFrame(
+            adjacentTo: sidebar,
+            in: usable,
+            edge: .right
+        )
+
+        XCTAssertTrue(usable.contains(companion))
+        XCTAssertEqual(companion.width, 276)
+        XCTAssertEqual(companion.height, 376)
+    }
 }

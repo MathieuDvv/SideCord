@@ -129,8 +129,12 @@ enum ApplicationMenuFactory {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settings = AppSettings()
+    private lazy var pluginManager = SideCordPluginManager()
     private lazy var launchAtLoginController = LaunchAtLoginController()
-    private lazy var webController = DiscordWebController(settings: settings)
+    private lazy var webController = DiscordWebController(
+        settings: settings,
+        pluginManager: pluginManager
+    )
     private lazy var panelController = PanelController(
         settings: settings,
         webController: webController,
@@ -141,8 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var statusItem: NSStatusItem?
     private var statusMenu: NSMenu?
-    private var settingsWindowController: NSWindowController?
-    private var onboardingWindowController: NSWindowController?
+    private var onboardingCoordinator: OnboardingExperienceCoordinator?
     private var shortcutError: Error?
     private var navigationShortcutError: Error?
 
@@ -338,69 +341,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func showSettings(_ sender: Any?) {
-        if settingsWindowController == nil {
-            let settingsView = SettingsView(
-                settings: settings,
-                webController: webController,
-                launchAtLoginController: launchAtLoginController,
-                onShortcutChanged: { [weak self] shortcut in
-                    guard let self else { return }
-                    try self.registerShortcut(shortcut)
-                },
-                onNavigationShortcutChanged: { [weak self] shortcut in
-                    guard let self else { return }
-                    try self.registerNavigationShortcut(shortcut)
-                },
-                onShortcutsReset: { [weak self] in
-                    guard let self else { return }
-                    try self.resetShortcutsToDefaults()
-                }
-            )
-            let hostingController = NSHostingController(rootView: settingsView)
-            let window = NSWindow(contentViewController: hostingController)
-            window.title = "SideCord Settings"
-            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            window.setContentSize(NSSize(width: 980, height: 720))
-            window.contentMinSize = NSSize(width: 820, height: 620)
-            window.isReleasedWhenClosed = false
-            window.collectionBehavior.insert(.moveToActiveSpace)
-            window.center()
-            settingsWindowController = NSWindowController(window: window)
+        panelController.reveal(activate: true)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(240))
+            self?.webController.openSideCordSettings()
         }
-
-        activate(windowController: settingsWindowController)
     }
 
     @objc private func showOnboarding() {
-        if onboardingWindowController?.window?.isVisible == true {
-            activate(windowController: onboardingWindowController)
+        if onboardingCoordinator?.isPresented == true {
             return
         }
 
         launchAtLoginController.refresh()
-        let onboardingView = OnboardingView(
+        let coordinator = OnboardingExperienceCoordinator(
             settings: settings,
+            webController: webController,
+            panelController: panelController,
             launchAtLoginController: launchAtLoginController,
-            onPreviewGlow: { [weak self] edge, accent in
-                self?.panelController.previewNotificationGlow(edge: edge, accent: accent)
-            },
-            onFinish: { [weak self] in
+            onComplete: { [weak self] in
                 guard let self else { return }
                 UserDefaults.standard.set(true, forKey: self.onboardingCompletedKey)
-                self.onboardingWindowController?.close()
-                self.panelController.reveal(activate: true)
+                self.onboardingCoordinator = nil
             }
         )
-        let hostingController = NSHostingController(rootView: onboardingView)
-        let window = NSWindow(contentViewController: hostingController)
-        window.title = "Welcome to SideCord"
-        window.styleMask = [.titled, .closable]
-        window.collectionBehavior.insert(.moveToActiveSpace)
-        window.isReleasedWhenClosed = false
-        window.center()
-        onboardingWindowController = NSWindowController(window: window)
-
-        activate(windowController: onboardingWindowController)
+        onboardingCoordinator = coordinator
+        let screen = PanelGeometry.screen(
+            containing: NSEvent.mouseLocation,
+            from: NSScreen.screens
+        ) ?? NSScreen.main
+        guard let screen else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        coordinator.start(on: screen)
     }
 
     @objc private func quit() {

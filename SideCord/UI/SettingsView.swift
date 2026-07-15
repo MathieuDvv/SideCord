@@ -1,9 +1,11 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     let webController: DiscordWebController
+    @ObservedObject var pluginManager: SideCordPluginManager
     @ObservedObject var launchAtLoginController: LaunchAtLoginController
     let onShortcutChanged: (ShortcutDefinition) throws -> Void
     let onNavigationShortcutChanged: (ShortcutDefinition) throws -> Void
@@ -14,11 +16,14 @@ struct SettingsView: View {
     @State private var shortcutDraft: ShortcutDefinition
     @State private var navigationShortcutDraft: ShortcutDefinition
     @State private var presentedError: PresentedSettingsError?
+    @State private var pendingLocalPluginURL: URL?
+    @State private var showingLocalPluginWarning = false
     @StateObject private var shortcutRecordingSession: ShortcutRecordingSession
 
     init(
         settings: AppSettings,
         webController: DiscordWebController,
+        pluginManager: SideCordPluginManager,
         launchAtLoginController: LaunchAtLoginController,
         onShortcutChanged: @escaping (ShortcutDefinition) throws -> Void,
         onNavigationShortcutChanged: @escaping (ShortcutDefinition) throws -> Void,
@@ -26,6 +31,7 @@ struct SettingsView: View {
     ) {
         self.settings = settings
         self.webController = webController
+        self.pluginManager = pluginManager
         self.launchAtLoginController = launchAtLoginController
         self.onShortcutChanged = onShortcutChanged
         self.onNavigationShortcutChanged = onNavigationShortcutChanged
@@ -74,6 +80,15 @@ struct SettingsView: View {
                 message: Text(error.message),
                 dismissButton: .default(Text("OK"))
             )
+        }
+        .confirmationDialog(
+            "Install this local plugin?",
+            isPresented: $showingLocalPluginWarning
+        ) {
+            Button("Install Local Plugin") { installPendingLocalPlugin() }
+            Button("Cancel", role: .cancel) { pendingLocalPluginURL = nil }
+        } message: {
+            Text("Local packages are not reviewed by the SideCord marketplace. Their declarative capabilities will still be validated and arbitrary code is never allowed.")
         }
     }
 
@@ -146,6 +161,8 @@ struct SettingsView: View {
             themesPage
         case .advanced:
             advancedPage
+        case .plugins:
+            pluginsPage
         case .about:
             aboutPage
         }
@@ -307,6 +324,43 @@ struct SettingsView: View {
                     symbol: "sparkles",
                     tint: .indigo,
                     isOn: $settings.notificationGlowEnabled
+                )
+
+                SettingsDivider()
+
+                LabeledContent("Glow color") {
+                    Picker("Glow color", selection: $settings.attentionGlowColor) {
+                        ForEach(AttentionGlowColor.allCases) { color in
+                            Text(color.title).tag(color)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 190)
+                }
+                .disabled(!settings.notificationGlowEnabled)
+
+                SettingsDivider()
+
+                LabeledContent("Glow strength") {
+                    Picker("Glow strength", selection: $settings.attentionGlowStrength) {
+                        ForEach(AttentionGlowStrength.allCases) { strength in
+                            Text(strength.title).tag(strength)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 260)
+                }
+                .disabled(!settings.notificationGlowEnabled)
+
+                SettingsDivider()
+
+                SettingsToggleRow(
+                    title: "Incoming-call controls",
+                    detail: "Show the caller or group name with Answer and Decline beside the edge glow.",
+                    symbol: "phone.arrow.down.left.fill",
+                    tint: .green,
+                    isOn: $settings.incomingCallCardEnabled
                 )
             }
         }
@@ -555,6 +609,57 @@ struct SettingsView: View {
     private var advancedPage: some View {
         VStack(spacing: 18) {
             SettingsGlassCard(
+                title: "Integration health",
+                subtitle: "SideCord checks its privacy-safe Discord integration points without reading message content.",
+                symbol: "stethoscope",
+                tint: integrationHealthTint
+            ) {
+                HStack {
+                    Label(
+                        webController.integrationHealth.summary,
+                        systemImage: webController.integrationHealth.runtimeReady
+                            ? "checkmark.circle.fill"
+                            : "clock.fill"
+                    )
+                    .font(.headline)
+                    Spacer()
+                    Button("Reload Discord") { webController.reload() }
+                }
+
+                SettingsDivider()
+
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 155), spacing: 10)],
+                    spacing: 10
+                ) {
+                    IntegrationHealthItem(
+                        title: "Server rail",
+                        detected: webController.integrationHealth.guildRailDetected
+                    )
+                    IntegrationHealthItem(
+                        title: "Channels",
+                        detected: webController.integrationHealth.channelListDetected
+                    )
+                    IntegrationHealthItem(
+                        title: "Composer",
+                        detected: webController.integrationHealth.composerDetected
+                    )
+                    IntegrationHealthItem(
+                        title: "Call controls",
+                        detected: webController.integrationHealth.incomingCallDetected
+                            ? webController.integrationHealth.incomingCallControlsDetected
+                            : nil
+                    )
+                    IntegrationHealthItem(
+                        title: "Settings page",
+                        detected: webController.integrationHealth.settingsShellDetected
+                            ? webController.integrationHealth.settingsCategoryInjected
+                            : nil
+                    )
+                }
+            }
+
+            SettingsGlassCard(
                 title: "Keyboard shortcuts",
                 subtitle: "Shortcuts work from any Space while SideCord is running.",
                 symbol: "keyboard.fill",
@@ -645,6 +750,216 @@ struct SettingsView: View {
         }
     }
 
+    private var integrationHealthTint: Color {
+        let health = webController.integrationHealth
+        guard health.runtimeReady else { return .gray }
+        return health.guildRailDetected && health.channelListDetected && health.composerDetected
+            ? .green
+            : .orange
+    }
+
+    private var pluginsPage: some View {
+        VStack(spacing: 18) {
+            SettingsGlassCard(
+                title: "Marketplace",
+                subtitle: "Reviewed declarative packages with verified catalog signatures and download hashes.",
+                symbol: "shippingbox.fill",
+                tint: .indigo
+            ) {
+                if pluginManager.isMarketplaceConfigured {
+                    HStack {
+                        Text(pluginManager.catalog == nil
+                             ? "Refresh to load the curated catalog."
+                             : "\(pluginManager.catalog?.plugins.count ?? 0) packages available")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Refresh", systemImage: "arrow.clockwise") {
+                            Task { await pluginManager.refreshMarketplace() }
+                        }
+                        .disabled(pluginManager.isRefreshingMarketplace)
+                    }
+
+                    if pluginManager.isRefreshingMarketplace {
+                        ProgressView().controlSize(.small)
+                    }
+
+                    ForEach(pluginManager.catalog?.plugins ?? []) { entry in
+                        SettingsDivider()
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(entry.name).font(.headline)
+                                Text("\(entry.author) · \(entry.version)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(entry.summary).font(.callout)
+                            }
+                            Spacer()
+                            Button("Install") { installMarketplaceEntry(entry) }
+                        }
+                    }
+                } else {
+                    Label(
+                        "The curated registry is not configured in this development build. Release builds must provide its HTTPS URL and Ed25519 public key.",
+                        systemImage: "lock.shield.fill"
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                }
+
+                if let error = pluginManager.marketplaceError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            SettingsGlassCard(
+                title: "Installed plugins",
+                subtitle: "Packages install disabled. Enable them only after reviewing their capabilities.",
+                symbol: "puzzlepiece.extension.fill",
+                tint: .purple
+            ) {
+                HStack {
+                    Text(pluginManager.installed.isEmpty
+                         ? "No plugins installed"
+                         : "\(pluginManager.installed.count) installed")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Import JSON…", systemImage: "square.and.arrow.down") {
+                        chooseLocalPlugin()
+                    }
+                }
+
+                ForEach(pluginManager.installed) { plugin in
+                    SettingsDivider()
+                    installedPluginRow(plugin)
+                }
+            }
+        }
+    }
+
+    private func installedPluginRow(_ plugin: InstalledSideCordPlugin) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(plugin.manifest.name).font(.headline)
+                    Text("\(plugin.manifest.author) · \(plugin.manifest.version) · \(plugin.source.rawValue.capitalized)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(plugin.manifest.description).font(.callout)
+                }
+                Spacer()
+                Toggle(
+                    "Enabled",
+                    isOn: Binding(
+                        get: { pluginManager.isEnabled(plugin) },
+                        set: { pluginManager.setEnabled($0, identifier: plugin.id) }
+                    )
+                )
+                .labelsHidden()
+            }
+
+            Text("Capabilities: " + plugin.manifest.capabilities
+                .map(\.rawValue)
+                .sorted()
+                .joined(separator: ", "))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if pluginManager.isEnabled(plugin) {
+                pluginContributionControls(plugin)
+            }
+
+            HStack {
+                Button("Rollback") { rollbackPlugin(plugin) }
+                Spacer()
+                Button("Uninstall", role: .destructive) { uninstallPlugin(plugin) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pluginContributionControls(_ plugin: InstalledSideCordPlugin) -> some View {
+        let contributions = plugin.manifest.contributions
+        if !contributions.themes.isEmpty || !contributions.layouts.isEmpty
+            || !contributions.commands.isEmpty {
+            HStack(spacing: 8) {
+                ForEach(contributions.themes) { theme in
+                    Button(theme.name) { pluginManager.apply(theme, to: settings) }
+                }
+                ForEach(contributions.layouts) { layout in
+                    Button(layout.name) { pluginManager.apply(layout, to: settings) }
+                }
+                ForEach(contributions.commands) { command in
+                    Button(command.name, systemImage: command.symbol ?? "bolt.fill") {
+                        pluginManager.perform(
+                            command,
+                            settings: settings,
+                            webController: webController
+                        )
+                    }
+                }
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    private func chooseLocalPlugin() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = "Choose a declarative SideCord JSON plugin package."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        pendingLocalPluginURL = url
+        showingLocalPluginWarning = true
+    }
+
+    private func installPendingLocalPlugin() {
+        defer { pendingLocalPluginURL = nil }
+        guard let url = pendingLocalPluginURL else { return }
+        do {
+            _ = try pluginManager.install(data: Data(contentsOf: url), source: .local)
+        } catch {
+            presentedError = PresentedSettingsError(
+                title: "Couldn’t install plugin",
+                message: error.localizedDescription
+            )
+        }
+    }
+
+    private func installMarketplaceEntry(_ entry: SideCordMarketplaceEntry) {
+        Task {
+            do { try await pluginManager.installMarketplaceEntry(entry) }
+            catch {
+                presentedError = PresentedSettingsError(
+                    title: "Couldn’t install plugin",
+                    message: error.localizedDescription
+                )
+            }
+        }
+    }
+
+    private func rollbackPlugin(_ plugin: InstalledSideCordPlugin) {
+        do { try pluginManager.rollback(identifier: plugin.id) }
+        catch {
+            presentedError = PresentedSettingsError(
+                title: "No rollback available",
+                message: error.localizedDescription
+            )
+        }
+    }
+
+    private func uninstallPlugin(_ plugin: InstalledSideCordPlugin) {
+        do { try pluginManager.uninstall(identifier: plugin.id) }
+        catch {
+            presentedError = PresentedSettingsError(
+                title: "Couldn’t uninstall plugin",
+                message: error.localizedDescription
+            )
+        }
+    }
+
     private var aboutPage: some View {
         VStack(spacing: 18) {
             SettingsGlassCard {
@@ -731,7 +1046,7 @@ struct SettingsView: View {
     ]
 
     private let accents: [SideCordAccent] = [
-        .automatic, .blurple, .blue, .purple, .pink, .green, .orange
+        .automatic, .blurple, .blue, .purple, .pink, .green, .orange, .white
     ]
 
     private let themeColorSchemes: [ThemeColorScheme] = [
@@ -883,6 +1198,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     case discordLayout
     case themes
     case advanced
+    case plugins
     case about
 
     var id: Self { self }
@@ -894,6 +1210,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .discordLayout: "Discord Layout"
         case .themes: "Themes"
         case .advanced: "Advanced"
+        case .plugins: "Plugins"
         case .about: "About"
         }
     }
@@ -905,6 +1222,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .discordLayout: "Make Discord readable at any sidebar width."
         case .themes: "Choose a visual character that feels at home on your Mac."
         case .advanced: "Shortcuts and carefully contained custom styling."
+        case .plugins: "Install reviewed themes, layouts, styles, and commands."
         case .about: "Details, privacy, and a fresh start."
         }
     }
@@ -916,6 +1234,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .discordLayout: "rectangle.3.group.fill"
         case .themes: "paintpalette.fill"
         case .advanced: "slider.horizontal.3"
+        case .plugins: "puzzlepiece.extension.fill"
         case .about: "info.circle.fill"
         }
     }
@@ -927,6 +1246,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .discordLayout: .indigo
         case .themes: .pink
         case .advanced: .orange
+        case .plugins: .purple
         case .about: .green
         }
     }
@@ -1071,6 +1391,50 @@ private struct SettingsGlassCard<Content: View>: View {
 private struct SettingsDivider: View {
     var body: some View {
         Divider().opacity(0.55)
+    }
+}
+
+private struct IntegrationHealthItem: View {
+    let title: String
+    let detected: Bool?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.callout)
+            Spacer(minLength: 4)
+            Text(status)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(9)
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var symbol: String {
+        switch detected {
+        case true: "checkmark.circle.fill"
+        case false: "exclamationmark.triangle.fill"
+        case nil: "minus.circle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch detected {
+        case true: .green
+        case false: .orange
+        case nil: .secondary
+        }
+    }
+
+    private var status: String {
+        switch detected {
+        case true: "Ready"
+        case false: "Missing"
+        case nil: "Idle"
+        }
     }
 }
 
@@ -1561,7 +1925,7 @@ private struct AccentChip: View {
                 } else if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(accent == .white ? .black : .white)
                 }
             }
             .padding(3)
@@ -1731,27 +2095,16 @@ private extension DiscordVisualTheme {
 
 private extension SideCordAccent {
     var settingsTitle: String {
-        switch self {
-        case .automatic: "Automatic"
-        case .blurple: "Blurple"
-        case .blue: "Blue"
-        case .purple: "Purple"
-        case .pink: "Pink"
-        case .green: "Green"
-        case .orange: "Orange"
-        }
+        title
     }
 
     var settingsColor: Color {
-        switch self {
-        case .automatic: Color(red: 0.35, green: 0.40, blue: 0.95)
-        case .blurple: Color(red: 0.35, green: 0.40, blue: 0.95)
-        case .blue: .blue
-        case .purple: .purple
-        case .pink: .pink
-        case .green: .green
-        case .orange: .orange
-        }
+        let descriptor = colorDescriptor
+        return Color(
+            red: descriptor.redUnit,
+            green: descriptor.greenUnit,
+            blue: descriptor.blueUnit
+        )
     }
 }
 

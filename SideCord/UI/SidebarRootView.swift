@@ -7,6 +7,12 @@ struct SidebarRootView: View {
     let onOpenSettings: () -> Void
 
     var body: some View {
+        discordContent
+        .background(Color(nsColor: .windowBackgroundColor))
+        .preferredColorScheme(preferredColorScheme)
+    }
+
+    private var discordContent: some View {
         ZStack(alignment: .topTrailing) {
             DiscordWebView(controller: webController)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -22,8 +28,6 @@ struct SidebarRootView: View {
             controlStrip
                 .padding(10)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
-        .preferredColorScheme(preferredColorScheme)
     }
 
     private var controlStrip: some View {
@@ -256,16 +260,12 @@ struct SidebarRootView: View {
     }
 
     private var nativeAccentColor: Color {
-        switch settings.themeAccent {
-        case .automatic:
-            Self.blurple
-        case .blurple: Self.blurple
-        case .blue: .blue
-        case .purple: .purple
-        case .pink: .pink
-        case .green: .green
-        case .orange: .orange
-        }
+        let descriptor = settings.themeAccent.colorDescriptor
+        return Color(
+            red: descriptor.redUnit,
+            green: descriptor.greenUnit,
+            blue: descriptor.blueUnit
+        )
     }
 
     private var nativeChromeColor: Color {
@@ -281,8 +281,6 @@ struct SidebarRootView: View {
             return nativeAccentColor.opacity(opacity * 0.65)
         }
     }
-
-    private static let blurple = Color(red: 0.345, green: 0.396, blue: 0.949)
 
     private func errorView(_ error: DiscordWebError) -> some View {
         VStack(spacing: 12) {

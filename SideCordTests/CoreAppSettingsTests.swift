@@ -11,6 +11,9 @@ final class CoreAppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.sidebarEdge, .right)
         XCTAssertTrue(settings.edgeHoverEnabled)
         XCTAssertTrue(settings.notificationGlowEnabled)
+        XCTAssertEqual(settings.attentionGlowColor, .followTheme)
+        XCTAssertEqual(settings.attentionGlowStrength, .normal)
+        XCTAssertTrue(settings.incomingCallCardEnabled)
         XCTAssertEqual(settings.hoverDwellDelay, 0.25, accuracy: 0.001)
         XCTAssertEqual(settings.retractionDelay, 0.7, accuracy: 0.001)
         XCTAssertEqual(settings.sidebarWidth, 420, accuracy: 0.001)
@@ -40,6 +43,9 @@ final class CoreAppSettingsTests: XCTestCase {
         settings.sidebarEdge = .left
         settings.edgeHoverEnabled = false
         settings.notificationGlowEnabled = false
+        settings.attentionGlowColor = .white
+        settings.attentionGlowStrength = .strong
+        settings.incomingCallCardEnabled = false
         settings.hoverDwellDelay = 0.4
         settings.retractionDelay = 1.2
         settings.sidebarWidth = 512
@@ -70,6 +76,9 @@ final class CoreAppSettingsTests: XCTestCase {
         XCTAssertEqual(restored.sidebarEdge, .left)
         XCTAssertFalse(restored.edgeHoverEnabled)
         XCTAssertFalse(restored.notificationGlowEnabled)
+        XCTAssertEqual(restored.attentionGlowColor, .white)
+        XCTAssertEqual(restored.attentionGlowStrength, .strong)
+        XCTAssertFalse(restored.incomingCallCardEnabled)
         XCTAssertEqual(restored.hoverDwellDelay, 0.4, accuracy: 0.001)
         XCTAssertEqual(restored.retractionDelay, 1.2, accuracy: 0.001)
         XCTAssertEqual(restored.sidebarWidth, 512, accuracy: 0.001)
@@ -468,6 +477,9 @@ final class CoreAppSettingsTests: XCTestCase {
         settings.sidebarEdge = .left
         settings.edgeHoverEnabled = false
         settings.notificationGlowEnabled = false
+        settings.attentionGlowColor = .orange
+        settings.attentionGlowStrength = .subtle
+        settings.incomingCallCardEnabled = false
         settings.sidebarWidth = 800
         settings.sidebarInset = 44
         settings.cssPreset = .standard
@@ -493,6 +505,9 @@ final class CoreAppSettingsTests: XCTestCase {
         XCTAssertEqual(restored.sidebarEdge, .right)
         XCTAssertTrue(restored.edgeHoverEnabled)
         XCTAssertTrue(restored.notificationGlowEnabled)
+        XCTAssertEqual(restored.attentionGlowColor, .followTheme)
+        XCTAssertEqual(restored.attentionGlowStrength, .normal)
+        XCTAssertTrue(restored.incomingCallCardEnabled)
         XCTAssertEqual(restored.sidebarWidth, 420, accuracy: 0.001)
         XCTAssertEqual(restored.sidebarInset, 16, accuracy: 0.001)
         XCTAssertEqual(restored.cssPreset, .compact)
@@ -509,6 +524,32 @@ final class CoreAppSettingsTests: XCTestCase {
         XCTAssertEqual(restored.navigationShortcut, .optionShiftD)
         XCTAssertFalse(restored.isPinned)
         XCTAssertTrue(restored.displayWidths.isEmpty)
+    }
+
+    @MainActor
+    func testDiscordSettingsBridgeAcceptsOnlyKnownTypedValues() {
+        let settings = AppSettings(defaults: makeDefaults())
+
+        XCTAssertTrue(SideCordSettingsMutation.apply(key: "sidebarEdge", value: "left", to: settings))
+        XCTAssertEqual(settings.sidebarEdge, .left)
+        XCTAssertTrue(SideCordSettingsMutation.apply(key: "themeAccent", value: "white", to: settings))
+        XCTAssertEqual(settings.themeAccent, .white)
+        XCTAssertTrue(SideCordSettingsMutation.apply(key: "themeIntensity", value: 0.45, to: settings))
+        XCTAssertEqual(settings.themeIntensity, 0.45, accuracy: 0.001)
+        XCTAssertTrue(SideCordSettingsMutation.apply(key: "edgeHoverEnabled", value: false, to: settings))
+        XCTAssertFalse(settings.edgeHoverEnabled)
+
+        XCTAssertFalse(SideCordSettingsMutation.apply(key: "themeIntensity", value: 4.0, to: settings))
+        XCTAssertFalse(SideCordSettingsMutation.apply(key: "edgeHoverEnabled", value: 1, to: settings))
+        XCTAssertFalse(SideCordSettingsMutation.apply(key: "discordLayoutMode", value: "custom", to: settings))
+        XCTAssertFalse(SideCordSettingsMutation.apply(key: "unknownSetting", value: true, to: settings))
+        XCTAssertEqual(settings.themeIntensity, 0.45, accuracy: 0.001)
+    }
+
+    func testGuidedOnboardingStepsRemainSequentialAndFocused() {
+        XCTAssertEqual(OnboardingSetupStep.allCases, [.placement, .layout, .appearance, .ready])
+        XCTAssertEqual(OnboardingSetupStep.placement.eyebrow, "01 · Placement")
+        XCTAssertEqual(OnboardingSetupStep.ready.title, "You’re all set")
     }
 
     private func makeDefaults() -> UserDefaults {

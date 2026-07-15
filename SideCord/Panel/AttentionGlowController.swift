@@ -47,10 +47,11 @@ final class AttentionGlowController {
     func presentNotification(
         on screen: NSScreen,
         edge: SidebarEdge,
-        color: NSColor
+        color: NSColor,
+        strength: AttentionGlowStrength = .normal
     ) {
         let wasVisible = panel.isVisible
-        configure(on: screen, edge: edge, color: color)
+        configure(on: screen, edge: edge, color: color, strength: strength)
         generation &+= 1
         let currentGeneration = generation
         completionWorkItem?.cancel()
@@ -68,10 +69,12 @@ final class AttentionGlowController {
         layer.transform = CATransform3DIdentity
 
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        let duration = reduceMotion ? 1.8 : 2.6
+        let duration = reduceMotion ? 1.8 : (strength == .strong ? 3.15 : 2.6)
+        let peakOpacity: Float = strength == .subtle ? 0.82 : 1
+        let sustainedOpacity: Float = strength == .strong ? 0.9 : 0.78
         let opacity = CAKeyframeAnimation(keyPath: "opacity")
-        opacity.values = [initialOpacity, 0.96, 0.78, 0]
-        opacity.keyTimes = [0, 0.14, 0.48, 1]
+        opacity.values = [initialOpacity, peakOpacity, sustainedOpacity, 0]
+        opacity.keyTimes = [0, 0.12, strength == .strong ? 0.58 : 0.48, 1]
 
         let group = CAAnimationGroup()
         group.duration = duration
@@ -82,7 +85,11 @@ final class AttentionGlowController {
             let transform = CAKeyframeAnimation(keyPath: "transform")
             transform.values = [
                 NSValue(caTransform3D: initialTransform),
-                NSValue(caTransform3D: CATransform3DMakeScale(1, 1.02, 1)),
+                NSValue(caTransform3D: CATransform3DMakeScale(
+                    1,
+                    strength == .strong ? 1.12 : 1.02,
+                    1
+                )),
                 NSValue(caTransform3D: CATransform3DIdentity),
                 NSValue(caTransform3D: CATransform3DIdentity)
             ]
@@ -96,9 +103,10 @@ final class AttentionGlowController {
     func presentCall(
         on screen: NSScreen,
         edge: SidebarEdge,
-        color: NSColor
+        color: NSColor,
+        strength: AttentionGlowStrength = .normal
     ) {
-        configure(on: screen, edge: edge, color: color)
+        configure(on: screen, edge: edge, color: color, strength: strength)
         generation &+= 1
         completionWorkItem?.cancel()
         presentation = .call
@@ -127,17 +135,23 @@ final class AttentionGlowController {
     func updateAppearance(
         on screen: NSScreen,
         edge: SidebarEdge,
-        color: NSColor
+        color: NSColor,
+        strength: AttentionGlowStrength = .normal
     ) {
         guard isPresenting else { return }
-        configure(on: screen, edge: edge, color: color)
+        configure(on: screen, edge: edge, color: color, strength: strength)
     }
 
     func refreshAccessibilityAnimation() {
         guard presentation == .call,
               let screen = currentScreen
         else { return }
-        presentCall(on: screen, edge: currentEdge, color: currentColor)
+        presentCall(
+            on: screen,
+            edge: currentEdge,
+            color: currentColor,
+            strength: currentStrength
+        )
     }
 
     func dismissSoftly() {
@@ -182,6 +196,7 @@ final class AttentionGlowController {
     }
 
     private var currentEdge: SidebarEdge = .right
+    private var currentStrength: AttentionGlowStrength = .normal
     private var currentColor = NSColor(
         srgbRed: 88 / 255,
         green: 101 / 255,
@@ -189,15 +204,25 @@ final class AttentionGlowController {
         alpha: 1
     )
 
-    private func configure(on screen: NSScreen, edge: SidebarEdge, color: NSColor) {
+    private func configure(
+        on screen: NSScreen,
+        edge: SidebarEdge,
+        color: NSColor,
+        strength: AttentionGlowStrength
+    ) {
         displayID = PanelGeometry.displayID(for: screen)
         currentEdge = edge
         currentColor = color
+        currentStrength = strength
         panel.setFrame(
-            PanelGeometry.attentionGlowFrame(in: screen.frame, edge: edge),
+            PanelGeometry.attentionGlowFrame(
+                in: screen.frame,
+                edge: edge,
+                requestedWidth: strength.glowWidth
+            ),
             display: false
         )
-        panel.glowView.update(edge: edge, color: color)
+        panel.glowView.update(edge: edge, color: color, intensity: strength.intensity)
         panel.glowView.layoutSubtreeIfNeeded()
     }
 

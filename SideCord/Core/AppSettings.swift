@@ -31,6 +31,18 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    @Published var attentionGlowColor: AttentionGlowColor {
+        didSet { defaults.set(attentionGlowColor.rawValue, forKey: Keys.attentionGlowColor) }
+    }
+
+    @Published var attentionGlowStrength: AttentionGlowStrength {
+        didSet { defaults.set(attentionGlowStrength.rawValue, forKey: Keys.attentionGlowStrength) }
+    }
+
+    @Published var incomingCallCardEnabled: Bool {
+        didSet { defaults.set(incomingCallCardEnabled, forKey: Keys.incomingCallCardEnabled) }
+    }
+
     @Published var hoverDwellDelay: TimeInterval {
         didSet {
             let validated = Self.validatedDelay(
@@ -194,6 +206,15 @@ final class AppSettings: ObservableObject {
             in: defaults,
             defaultValue: true
         )
+        attentionGlowColor = defaults.string(forKey: Keys.attentionGlowColor)
+            .flatMap(AttentionGlowColor.init(rawValue:)) ?? .followTheme
+        attentionGlowStrength = defaults.string(forKey: Keys.attentionGlowStrength)
+            .flatMap(AttentionGlowStrength.init(rawValue:)) ?? .normal
+        incomingCallCardEnabled = Self.bool(
+            forKey: Keys.incomingCallCardEnabled,
+            in: defaults,
+            defaultValue: true
+        )
         hoverDwellDelay = Self.validatedDelay(
             Self.double(forKey: Keys.hoverDwellDelay, in: defaults)
                 ?? Self.defaultHoverDwellDelay,
@@ -285,6 +306,9 @@ final class AppSettings: ObservableObject {
         defaults.set(sidebarEdge.rawValue, forKey: Keys.sidebarEdge)
         defaults.set(edgeHoverEnabled, forKey: Keys.edgeHoverEnabled)
         defaults.set(notificationGlowEnabled, forKey: Keys.notificationGlowEnabled)
+        defaults.set(attentionGlowColor.rawValue, forKey: Keys.attentionGlowColor)
+        defaults.set(attentionGlowStrength.rawValue, forKey: Keys.attentionGlowStrength)
+        defaults.set(incomingCallCardEnabled, forKey: Keys.incomingCallCardEnabled)
         defaults.set(hoverDwellDelay, forKey: Keys.hoverDwellDelay)
         defaults.set(retractionDelay, forKey: Keys.retractionDelay)
         defaults.set(Double(sidebarWidth), forKey: Keys.sidebarWidth)
@@ -363,22 +387,33 @@ final class AppSettings: ObservableObject {
         defaults.removeObject(forKey: Keys.displayWidths)
     }
 
-    func resetToDefaults() {
-        sidebarEdge = .right
-        edgeHoverEnabled = true
-        notificationGlowEnabled = true
-        hoverDwellDelay = Self.defaultHoverDwellDelay
-        retractionDelay = Self.defaultRetractionDelay
-        sidebarWidth = Self.defaultSidebarWidth
-        sidebarInset = Self.defaultSidebarInset
+    func resetDiscordLayoutSettings() {
         cssPreset = .compact
         discordLayoutMode = .full
         customDiscordLayoutOptions = .full
         floatingRailEnabled = true
+    }
+
+    func resetAppearanceSettings() {
         visualTheme = .systemGlass
         themeAccent = .automatic
         themeIntensity = Self.defaultThemeIntensity
         themeColorScheme = .system
+    }
+
+    func resetToDefaults() {
+        sidebarEdge = .right
+        edgeHoverEnabled = true
+        notificationGlowEnabled = true
+        attentionGlowColor = .followTheme
+        attentionGlowStrength = .normal
+        incomingCallCardEnabled = true
+        hoverDwellDelay = Self.defaultHoverDwellDelay
+        retractionDelay = Self.defaultRetractionDelay
+        sidebarWidth = Self.defaultSidebarWidth
+        sidebarInset = Self.defaultSidebarInset
+        resetDiscordLayoutSettings()
+        resetAppearanceSettings()
         customCSS = ""
         customCSSEnabled = false
         launchAtLoginEnabled = false
@@ -484,6 +519,9 @@ final class AppSettings: ObservableObject {
         static let sidebarEdge = "settings.sidebarEdge"
         static let edgeHoverEnabled = "settings.edgeHoverEnabled"
         static let notificationGlowEnabled = "settings.notificationGlowEnabled"
+        static let attentionGlowColor = "settings.attentionGlowColor"
+        static let attentionGlowStrength = "settings.attentionGlowStrength"
+        static let incomingCallCardEnabled = "settings.incomingCallCardEnabled"
         static let hoverDwellDelay = "settings.hoverDwellDelay"
         static let retractionDelay = "settings.retractionDelay"
         static let sidebarWidth = "settings.sidebarWidth"

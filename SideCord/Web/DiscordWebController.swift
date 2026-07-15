@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import Foundation
 import OSLog
+import UniformTypeIdentifiers
 import WebKit
 
 struct DiscordWebError: Error, Equatable, Identifiable, LocalizedError {
@@ -26,6 +27,29 @@ struct DiscordWebError: Error, Equatable, Identifiable, LocalizedError {
     }
 
     var canRetryByReloading: Bool { true }
+}
+
+struct DiscordIntegrationHealth: Equatable, Sendable {
+    var runtimeReady = false
+    var guildRailDetected = false
+    var channelListDetected = false
+    var composerDetected = false
+    var incomingCallDetected = false
+    var incomingCallControlsDetected = false
+    var settingsShellDetected = false
+    var settingsCategoryInjected = false
+
+    var summary: String {
+        guard runtimeReady else { return "Waiting for Discord" }
+        let core = [guildRailDetected, channelListDetected, composerDetected]
+        return core.allSatisfy { $0 } ? "Discord integration ready" : "Some selectors need attention"
+    }
+}
+
+enum DiscordSessionState: String, Equatable, Sendable {
+    case loading
+    case signedOut
+    case authenticated
 }
 
 @MainActor
@@ -99,12 +123,15 @@ final class DiscordWebController: NSObject, ObservableObject {
     @Published private(set) var error: DiscordWebError?
     @Published private(set) var downloadError: String?
     @Published private(set) var isNavigationDrawerOpen = false
+    @Published private(set) var integrationHealth = DiscordIntegrationHealth()
+    @Published private(set) var sessionState: DiscordSessionState = .loading
 
     let webView: WKWebView
     lazy private(set) var railModel = DiscordRailModel(controller: self)
     let attentionModel = DiscordAttentionModel()
 
     private let settings: AppSettings
+    private let pluginManager: SideCordPluginManager
     private let compactPresetCSS: String
     private let layoutModifiersCSS: String
     private let visualThemesCSS: String
@@ -125,9 +152,15 @@ final class DiscordWebController: NSObject, ObservableObject {
     private var authenticationPopups: [ObjectIdentifier: AuthenticationPopupController] = [:]
     private var approvedProgrammaticNavigationURLs = Set<String>()
     private var isRuntimeMessageHandlerInstalled = false
+    private var settingsOpenGeneration: UInt64 = 0
 
-    init(settings: AppSettings, resourceBundle: Bundle = .main) {
+    init(
+        settings: AppSettings,
+        pluginManager: SideCordPluginManager,
+        resourceBundle: Bundle = .main
+    ) {
         self.settings = settings
+        self.pluginManager = pluginManager
         compactPresetCSS = Self.loadBundledCSS(named: "compact", from: resourceBundle)
         layoutModifiersCSS = Self.loadBundledCSS(named: "layout-mods", from: resourceBundle)
         visualThemesCSS = Self.loadBundledCSS(named: "visual-themes", from: resourceBundle)
@@ -202,6 +235,67 @@ final class DiscordWebController: NSObject, ObservableObject {
         performRuntimeAction("closeDrawer")
     }
 
+    func openSideCordSettings() {
+        settingsOpenGeneration &+= 1
+        let requestGeneration = settingsOpenGeneration
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            var didStartOpening = false
+            for attempt in 0..<80 {
+                guard self.settingsOpenGeneration == requestGeneration else { return }
+                if attempt == 0 || attempt.isMultiple(of: 20) {
+                    // Also installs the bridge into an already-loaded document
+                    // and survives Discord's startup redirects between documents.
+                    self.refreshCSS()
+                }
+                let result = try? await self.webView.evaluateJavaScript(
+                    DiscordCSSComposer.openSideCordSettingsSource()
+                )
+                if (result as? Bool) == true {
+                    didStartOpening = true
+                    break
+                }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            guard didStartOpening else {
+                return
+            }
+
+            // Discord mounts settings through a lazy SPA layer. Give its DOM
+            // observer time to populate that layer, then reinject if needed.
+            try? await Task.sleep(for: .seconds(6.5))
+            guard self.settingsOpenGeneration == requestGeneration else { return }
+            if !self.integrationHealth.settingsCategoryInjected {
+                self.refreshCSS()
+                _ = try? await self.webView.evaluateJavaScript(
+                    DiscordCSSComposer.openSideCordSettingsSource()
+                )
+            }
+        }
+    }
+
+    func performIncomingCallAction(
+        _ action: IncomingCallAction,
+        completion: @escaping @MainActor (Bool) -> Void
+    ) {
+        guard let url = webView.url, DiscordURLPolicy.isDiscordURL(url) else {
+            completion(false)
+            return
+        }
+        let generation = runtimeDocumentGeneration
+        webView.evaluateJavaScript(
+            DiscordCSSComposer.incomingCallActionSource(action.rawValue)
+        ) { [weak self] result, error in
+            Task { @MainActor in
+                guard let self, self.runtimeDocumentGeneration == generation else {
+                    completion(false)
+                    return
+                }
+                completion(error == nil && (result as? Bool) == true)
+            }
+        }
+    }
+
     func shutdown() {
         discardAllPendingDownloads()
         guard isRuntimeMessageHandlerInstalled else { return }
@@ -245,6 +339,19 @@ final class DiscordWebController: NSObject, ObservableObject {
             .filter { [weak self] _ in self?.settings.customCSSEnabled == true }
             .sink { [weak self] _ in self?.refreshCSS() }
             .store(in: &settingsCancellables)
+
+        Publishers.Merge(
+            pluginManager.$installed.dropFirst().map { _ in () },
+            pluginManager.$enabledIdentifiers.dropFirst().map { _ in () }
+        )
+        .debounce(for: .milliseconds(40), scheduler: RunLoop.main)
+        .sink { [weak self] _ in self?.refreshCSS() }
+        .store(in: &settingsCancellables)
+
+        settings.objectWillChange
+            .debounce(for: .milliseconds(90), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshCSS() }
+            .store(in: &settingsCancellables)
     }
 
     private func refreshCSS(injectIntoCurrentPage: Bool) {
@@ -286,6 +393,7 @@ final class DiscordWebController: NSObject, ObservableObject {
             layoutModifiersCSS: layoutModifiersCSS,
             visualThemesCSS: visualThemesCSS,
             layoutOptions: layoutOptions,
+            pluginCSS: pluginManager.combinedStyleSheet,
             customCSS: customCSS,
             customCSSEnabled: customCSSEnabled
         )
@@ -302,12 +410,22 @@ final class DiscordWebController: NSObject, ObservableObject {
         )
         let notificationBridgeSource = DiscordCSSComposer
             .notificationBridgeUserScriptSource(isEnabled: notificationGlowEnabled)
+        let settingsBridgeSource = DiscordCSSComposer.settingsBridgeUserScriptSource(
+            snapshot: settingsSnapshot()
+        )
         let contentController = webView.configuration.userContentController
         contentController.removeAllUserScripts()
         contentController.addUserScript(
             WKUserScript(
                 source: notificationBridgeSource,
                 injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+        contentController.addUserScript(
+            WKUserScript(
+                source: settingsBridgeSource,
+                injectionTime: .atDocumentEnd,
                 forMainFrameOnly: true
             )
         )
@@ -327,7 +445,7 @@ final class DiscordWebController: NSObject, ObservableObject {
         }
 
         let generation = runtimeDocumentGeneration
-        let liveSource = notificationBridgeSource + "\n" + source
+        let liveSource = notificationBridgeSource + "\n" + source + "\n" + settingsBridgeSource
         webView.evaluateJavaScript(liveSource) { [weak self] _, error in
             // A navigation may replace the document while this is executing.
             // The registered WKUserScript will apply the same CSS to the new one.
@@ -339,6 +457,94 @@ final class DiscordWebController: NSObject, ObservableObject {
                 } else {
                     self.runtimeActions.markLoading()
                 }
+            }
+        }
+    }
+
+    private func settingsSnapshot() -> SideCordSettingsSnapshot {
+        SideCordSettingsSnapshot(
+            sidebarEdge: settings.sidebarEdge.rawValue,
+            edgeHoverEnabled: settings.edgeHoverEnabled,
+            sidebarWidth: Double(settings.sidebarWidth),
+            sidebarInset: Double(settings.sidebarInset),
+            discordLayoutMode: settings.discordLayoutMode.rawValue,
+            floatingRailEnabled: settings.floatingRailEnabled,
+            visualTheme: settings.visualTheme.rawValue,
+            themeAccent: settings.themeAccent.rawValue,
+            themeIntensity: settings.themeIntensity,
+            themeColorScheme: settings.themeColorScheme.rawValue,
+            notificationGlowEnabled: settings.notificationGlowEnabled,
+            attentionGlowColor: settings.attentionGlowColor.rawValue,
+            attentionGlowStrength: settings.attentionGlowStrength.rawValue,
+            incomingCallCardEnabled: settings.incomingCallCardEnabled,
+            pluginsInstalled: pluginManager.installed.count,
+            pluginsEnabled: pluginManager.enabledIdentifiers.count,
+            plugins: pluginManager.installed.map { plugin in
+                SideCordPluginSettingsSnapshot(
+                    identifier: plugin.id,
+                    name: plugin.manifest.name,
+                    version: plugin.manifest.version,
+                    enabled: pluginManager.isEnabled(plugin)
+                )
+            }
+        )
+    }
+
+    private func handleSettingsAction(_ payload: [String: Any]) {
+        guard let action = payload["action"] as? String, action.count <= 64 else { return }
+        switch action {
+        case "resetTheme":
+            settings.resetAppearanceSettings()
+            refreshCSS()
+        case "resetLayout":
+            settings.resetDiscordLayoutSettings()
+            refreshCSS()
+        case "resetAll":
+            settings.resetToDefaults()
+            refreshCSS()
+        case "installPlugin":
+            choosePluginForInstallation()
+        case "setPluginEnabled":
+            guard let identifier = payload["identifier"] as? String,
+                  identifier.count <= 128,
+                  let value = payload["value"] as? NSNumber,
+                  CFGetTypeID(value) == CFBooleanGetTypeID()
+            else { return }
+            pluginManager.setEnabled(value.boolValue, identifier: identifier)
+            refreshCSS()
+        case "removePlugin":
+            guard let identifier = payload["identifier"] as? String,
+                  identifier.count <= 128
+            else { return }
+            do {
+                try pluginManager.uninstall(identifier: identifier)
+                downloadError = nil
+                refreshCSS()
+            } catch {
+                downloadError = "Couldn’t remove plugin: \(error.localizedDescription)"
+            }
+        default:
+            return
+        }
+    }
+
+    private func choosePluginForInstallation() {
+        let panel = NSOpenPanel()
+        panel.title = "Import a SideCord plugin"
+        panel.message = "Choose a declarative SideCord JSON plugin package."
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canCreateDirectories = false
+        NSApp.activate(ignoringOtherApps: true)
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            do {
+                _ = try self.pluginManager.install(data: Data(contentsOf: url), source: .local)
+                self.downloadError = nil
+                self.refreshCSS()
+            } catch {
+                self.downloadError = "Couldn’t install plugin: \(error.localizedDescription)"
             }
         }
     }
@@ -477,6 +683,22 @@ final class DiscordWebController: NSObject, ObservableObject {
         canGoBack = webView.canGoBack
         canGoForward = webView.canGoForward
         currentURL = webView.url
+        updateSessionState(for: webView.url)
+    }
+
+    private func updateSessionState(for url: URL?) {
+        guard let url, DiscordURLPolicy.isDiscordURL(url) else {
+            sessionState = .loading
+            return
+        }
+        let path = url.path.lowercased()
+        if path == "/login" || path.hasPrefix("/register") {
+            sessionState = .signedOut
+        } else if integrationHealth.guildRailDetected || integrationHealth.channelListDetected {
+            sessionState = .authenticated
+        } else {
+            sessionState = .loading
+        }
     }
 
     private func recordNavigationFailure(_ failure: Error) {
@@ -545,7 +767,17 @@ extension DiscordWebController: WKScriptMessageHandler {
            let number = payload["active"] as? NSNumber,
            CFGetTypeID(number) == CFBooleanGetTypeID() {
             let active = number.boolValue
-            attentionModel.setIncomingCallActive(active)
+            if active {
+                let identifier = payload["callID"] as? String
+                    ?? IncomingCallDescriptor.generic.id
+                let displayName = payload["displayName"] as? String
+                    ?? IncomingCallDescriptor.generic.displayName
+                attentionModel.setIncomingCall(
+                    IncomingCallDescriptor(id: identifier, displayName: displayName)
+                )
+            } else {
+                attentionModel.setIncomingCall(nil)
+            }
             return
         }
 
@@ -557,12 +789,54 @@ extension DiscordWebController: WKScriptMessageHandler {
             return
         }
 
+        if type == "health" {
+            let previousHealth = integrationHealth
+            integrationHealth = DiscordIntegrationHealth(
+                runtimeReady: payload["runtime"] as? Bool ?? false,
+                guildRailDetected: payload["guildRail"] as? Bool ?? false,
+                channelListDetected: payload["channelList"] as? Bool ?? false,
+                composerDetected: payload["composer"] as? Bool ?? false,
+                incomingCallDetected: payload["incomingCall"] as? Bool ?? false,
+                incomingCallControlsDetected: payload["callControls"] as? Bool ?? false,
+                settingsShellDetected: previousHealth.settingsShellDetected,
+                settingsCategoryInjected: previousHealth.settingsCategoryInjected
+            )
+            updateSessionState(for: webView.url)
+            return
+        }
+
+        if type == "settingsHealth" {
+            integrationHealth.settingsShellDetected = payload["shellDetected"] as? Bool ?? false
+            integrationHealth.settingsCategoryInjected = payload["categoryInjected"] as? Bool ?? false
+            return
+        }
+
+        if type == "settingsSet",
+           let key = payload["key"] as? String,
+           key.count <= 64,
+           let value = payload["value"] {
+            if SideCordSettingsMutation.apply(key: key, value: value, to: settings) {
+                refreshCSS()
+            }
+            return
+        }
+
+        if type == "settingsAction" {
+            handleSettingsAction(payload)
+            return
+        }
+
         guard type == "drawer", let isOpen = payload["open"] as? Bool else { return }
         if let expectedDrawerState, expectedDrawerState != isOpen { return }
         drawerExpectationGeneration += 1
         expectedDrawerState = nil
         isNavigationDrawerOpen = isOpen
     }
+}
+
+enum IncomingCallAction: String, Sendable {
+    case answer
+    case decline
 }
 
 extension DiscordWebController: WKNavigationDelegate {
@@ -663,6 +937,8 @@ extension DiscordWebController: WKNavigationDelegate {
         runtimeActions.markLoading()
         railModel.reset()
         attentionModel.reset()
+        integrationHealth = DiscordIntegrationHealth()
+        sessionState = .loading
         error = nil
         isLoading = true
         synchronizeNavigationState()
@@ -703,6 +979,8 @@ extension DiscordWebController: WKNavigationDelegate {
         runtimeActions.markLoading()
         railModel.reset()
         attentionModel.reset()
+        integrationHealth = DiscordIntegrationHealth()
+        sessionState = .loading
         error = DiscordWebError(
             kind: .webContentProcess,
             message: "Discord's web content stopped unexpectedly."

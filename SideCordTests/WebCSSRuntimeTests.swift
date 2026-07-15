@@ -115,6 +115,78 @@ final class WebCSSRuntimeTests: XCTestCase {
         XCTAssertEqual(recorder.incomingCallStates, [true, false, true, false, true, false])
     }
 
+    func testIncomingCallActionsStayScopedAndFailClosedWhenAmbiguous() async throws {
+        let recorder = RuntimeMessageRecorder()
+        let (webView, navigationWaiter) = try await loadFixture(messageRecorder: recorder)
+        _ = navigationWaiter
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.userScriptSource(
+                css: try runtimeCSS(customCSS: ""),
+                configuration: makeConfiguration(navigation: .docked, composer: .full)
+            )
+        )
+        try await waitForRuntime()
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              window.fixtureAnswered = 0;
+              window.fixtureDeclined = 0;
+              const call = document.createElement('div');
+              call.id = 'call-fixture';
+              call.className = 'ringingIncoming_fixture';
+              call.setAttribute('aria-label', 'Incoming call from Ada');
+              call.style.cssText =
+                'position: fixed; top: 20px; left: 20px; width: 260px; height: 90px';
+              const answer = document.createElement('button');
+              answer.setAttribute('aria-label', 'Answer call');
+              answer.addEventListener('click', () => window.fixtureAnswered++);
+              const decline = document.createElement('button');
+              decline.setAttribute('aria-label', 'Decline call');
+              decline.addEventListener('click', () => window.fixtureDeclined++);
+              call.append(answer, decline);
+              document.body.appendChild(call);
+
+              const unrelated = document.createElement('button');
+              unrelated.setAttribute('aria-label', 'Answer survey');
+              unrelated.addEventListener('click', () => window.fixtureAnswered += 100);
+              document.body.appendChild(unrelated);
+            })()
+            """
+        )
+        try await waitForRuntime()
+
+        let answerResult = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.incomingCallActionSource("answer")
+        ) as? Bool
+        let declineResult = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.incomingCallActionSource("decline")
+        ) as? Bool
+        XCTAssertEqual(answerResult, true)
+        XCTAssertEqual(declineResult, true)
+
+        let counts = try await webView.evaluateJavaScript(
+            "({ answered: window.fixtureAnswered, declined: window.fixtureDeclined })"
+        ) as? [String: Int]
+        XCTAssertEqual(counts?["answered"], 1)
+        XCTAssertEqual(counts?["declined"], 1)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const duplicate = document.createElement('button');
+              duplicate.setAttribute('aria-label', 'Accept incoming call');
+              document.getElementById('call-fixture').appendChild(duplicate);
+            })()
+            """
+        )
+        try await waitForRuntime()
+        let ambiguousResult = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.incomingCallActionSource("answer")
+        ) as? Bool
+        XCTAssertEqual(ambiguousResult, false)
+    }
+
     func testNotificationBridgeReportsNoNotificationContentAndPreservesConstructor() async throws {
         let recorder = RuntimeMessageRecorder()
         let configuration = WKWebViewConfiguration()
@@ -288,6 +360,34 @@ final class WebCSSRuntimeTests: XCTestCase {
         )
         try await Task.sleep(for: .milliseconds(1_100))
         XCTAssertEqual(recorder.notificationPayloads.count, 2)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              new Notification('rapid one');
+              new Notification('rapid two');
+              new Notification('rapid three');
+            })()
+            """
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 5)
+        XCTAssertTrue(recorder.notificationPayloads.allSatisfy { Set($0.keys) == ["type"] })
+
+        _ = try await webView.evaluateJavaScript(
+            "(() => { window.Notification = window.fixtureOriginalNotification; return true; })()"
+        )
+        try await Task.sleep(for: .milliseconds(400))
+        _ = try await webView.evaluateJavaScript(
+            "(() => { new Notification('repaired hook'); return true; })()"
+        )
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 6)
+
+        _ = try await webView.evaluateJavaScript("document.title = '(1) Discord'")
+        try await waitForRuntime()
+        XCTAssertEqual(recorder.notificationPayloads.count, 7)
+        XCTAssertTrue(recorder.notificationPayloads.allSatisfy { Set($0.keys) == ["type"] })
         _ = navigationWaiter
     }
 
@@ -1051,13 +1151,13 @@ final class WebCSSRuntimeTests: XCTestCase {
             (() => {
               const ordinary = document.createElement('li');
               ordinary.id = 'chat-messages-1-102';
-              ordinary.textContent = 'ordinary non-notifying message';
+              ordinary.textContent = 'ordinary incoming message';
               document.getElementById('message-timeline').append(ordinary);
             })()
             """
         )
         try await waitForRuntime()
-        XCTAssertTrue(recorder.notificationPayloads.isEmpty)
+        XCTAssertEqual(recorder.notificationPayloads.count, 1)
 
         _ = try await webView.evaluateJavaScript(
             """
@@ -1071,7 +1171,7 @@ final class WebCSSRuntimeTests: XCTestCase {
             """
         )
         try await waitForRuntime()
-        XCTAssertEqual(recorder.notificationPayloads.count, 1)
+        XCTAssertEqual(recorder.notificationPayloads.count, 2)
         let firstPayload = try XCTUnwrap(recorder.notificationPayloads.first)
         XCTAssertEqual(Set(firstPayload.keys), ["type"])
 
@@ -1087,7 +1187,7 @@ final class WebCSSRuntimeTests: XCTestCase {
             """
         )
         try await waitForRuntime()
-        XCTAssertEqual(recorder.notificationPayloads.count, 2)
+        XCTAssertEqual(recorder.notificationPayloads.count, 3)
         let lastPayload = try XCTUnwrap(recorder.notificationPayloads.last)
         XCTAssertEqual(Set(lastPayload.keys), ["type"])
 
@@ -1102,7 +1202,7 @@ final class WebCSSRuntimeTests: XCTestCase {
             """
         )
         try await waitForRuntime()
-        XCTAssertEqual(recorder.notificationPayloads.count, 2)
+        XCTAssertEqual(recorder.notificationPayloads.count, 3)
 
         _ = try await webView.evaluateJavaScript(
             """
@@ -1111,7 +1211,7 @@ final class WebCSSRuntimeTests: XCTestCase {
             """
         )
         try await waitForRuntime()
-        XCTAssertEqual(recorder.notificationPayloads.count, 3)
+        XCTAssertEqual(recorder.notificationPayloads.count, 4)
 
         _ = try await webView.evaluateJavaScript(
             """
@@ -1127,7 +1227,7 @@ final class WebCSSRuntimeTests: XCTestCase {
             """
         )
         try await waitForRuntime()
-        XCTAssertEqual(recorder.notificationPayloads.count, 3)
+        XCTAssertEqual(recorder.notificationPayloads.count, 4)
 
         _ = try await webView.evaluateJavaScript(
             """
@@ -1141,7 +1241,7 @@ final class WebCSSRuntimeTests: XCTestCase {
             """
         )
         try await waitForRuntime()
-        XCTAssertEqual(recorder.notificationPayloads.count, 4)
+        XCTAssertEqual(recorder.notificationPayloads.count, 5)
 
         _ = try await webView.evaluateJavaScript(
             """
@@ -1160,10 +1260,10 @@ final class WebCSSRuntimeTests: XCTestCase {
             """
         )
         try await waitForRuntime()
-        XCTAssertEqual(recorder.notificationPayloads.count, 4)
+        XCTAssertEqual(recorder.notificationPayloads.count, 5)
     }
 
-    func testMessageFallbackDefersToExactNotificationSignals() async throws {
+    func testMentionFallbackSurvivesExactNotificationHookChanges() async throws {
         let recorder = RuntimeMessageRecorder()
         let (webView, navigationWaiter) = try await loadFixture(
             messageRecorder: recorder,
@@ -1210,7 +1310,7 @@ final class WebCSSRuntimeTests: XCTestCase {
             """
         )
         try await waitForRuntime()
-        XCTAssertTrue(recorder.notificationPayloads.isEmpty)
+        XCTAssertEqual(recorder.notificationPayloads.count, 1)
 
         _ = try await webView.evaluateJavaScript(
             DiscordCSSComposer.notificationBridgeUserScriptSource(isEnabled: false)
@@ -1226,7 +1326,7 @@ final class WebCSSRuntimeTests: XCTestCase {
             """
         )
         try await waitForRuntime()
-        XCTAssertTrue(recorder.notificationPayloads.isEmpty)
+        XCTAssertEqual(recorder.notificationPayloads.count, 1)
 
         _ = try await webView.evaluateJavaScript(
             DiscordCSSComposer.notificationBridgeUserScriptSource(isEnabled: true)
@@ -1256,8 +1356,8 @@ final class WebCSSRuntimeTests: XCTestCase {
             """
         )
         try await waitForRuntime()
-        XCTAssertEqual(recorder.notificationPayloads.count, 1)
-        XCTAssertEqual(Set(recorder.notificationPayloads[0].keys), ["type"])
+        XCTAssertEqual(recorder.notificationPayloads.count, 2)
+        XCTAssertTrue(recorder.notificationPayloads.allSatisfy { Set($0.keys) == ["type"] })
     }
 
     func testFloatingRailBridgeUsesLiveDiscordNodesAndSurvivesRerenders() async throws {
@@ -1760,6 +1860,625 @@ final class WebCSSRuntimeTests: XCTestCase {
         XCTAssertTrue(css.contains("data-sidecord-theme-scope=\"light\""))
     }
 
+    func testSettingsBridgeMountsInsideDiscordSettingsAndPostsTypedChanges() async throws {
+        let recorder = RuntimeMessageRecorder()
+        let (webView, navigationWaiter) = try await loadFixture(messageRecorder: recorder)
+        _ = navigationWaiter
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const shell = document.createElement('div');
+              shell.className = 'standardSidebarView_fixture';
+              shell.innerHTML = `
+                <aside class="sidebarRegion_fixture"><nav class="sidebar_fixture">
+                  <button id="discord-settings-item" role="tab">Discord setting</button>
+                </nav></aside>
+                <main class="contentRegion_fixture"><div class="contentColumn_fixture">Discord content</div></main>`;
+              document.body.appendChild(shell);
+            })()
+            """
+        )
+        let snapshot = SideCordSettingsSnapshot(
+            sidebarEdge: "right",
+            edgeHoverEnabled: true,
+            sidebarWidth: 420,
+            sidebarInset: 16,
+            discordLayoutMode: "focus",
+            floatingRailEnabled: true,
+            visualTheme: "systemGlass",
+            themeAccent: "white",
+            themeIntensity: 0.75,
+            themeColorScheme: "dark",
+            notificationGlowEnabled: true,
+            attentionGlowColor: "white",
+            attentionGlowStrength: "strong",
+            incomingCallCardEnabled: true,
+            pluginsInstalled: 3,
+            pluginsEnabled: 2
+        )
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.settingsBridgeUserScriptSource(snapshot: snapshot)
+        )
+        try await waitForRuntime()
+
+        let opened = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.openSideCordSettingsSource()
+        ) as? Bool
+        XCTAssertEqual(opened, true)
+        let mounted = try await webView.evaluateJavaScript(
+            """
+            (() => ({
+              nav: !!document.querySelector('[data-sidecord-settings-nav]'),
+              page: !!document.querySelector('[data-sidecord-settings-page]'),
+              visible: !document.querySelector('[data-sidecord-settings-page]').hidden,
+              accent: document.querySelector('[data-sidecord-key="themeAccent"]').value,
+              pluginText: document.querySelector('[data-sidecord-settings-page]').textContent.includes('2 of 3 plugins enabled')
+            }))()
+            """
+        ) as! [String: Any]
+        XCTAssertEqual(mounted["nav"] as? Bool, true)
+        XCTAssertEqual(mounted["page"] as? Bool, true)
+        XCTAssertEqual(mounted["visible"] as? Bool, true)
+        XCTAssertEqual(mounted["accent"] as? String, "white")
+        XCTAssertEqual(mounted["pluginText"] as? Bool, true)
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const input = document.querySelector('[data-sidecord-key="themeIntensity"]');
+              input.value = '0.4';
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            })()
+            """
+        )
+        try await waitForRuntime()
+        let mutation = recorder.messages.last(where: { $0["type"] as? String == "settingsSet" })
+        XCTAssertEqual(mutation?["key"] as? String, "themeIntensity")
+        let mutationValue = try XCTUnwrap(mutation?["value"] as? Double)
+        XCTAssertEqual(mutationValue, 0.4, accuracy: 0.001)
+        XCTAssertNotNil(recorder.messages.last(where: {
+            $0["type"] as? String == "settingsHealth"
+                && $0["categoryInjected"] as? Bool == true
+        }))
+    }
+
+    func testNitroQuestionMarkArtworkUsesStableFallback() async throws {
+        let (webView, navigationWaiter) = try await loadFixture()
+        _ = navigationWaiter
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.userScriptSource(
+                css: try runtimeCSS(customCSS: ""),
+                configuration: makeConfiguration(navigation: .docked, composer: .full)
+            )
+        )
+        try await waitForRuntime()
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const link = document.createElement('a');
+              link.id = 'nitro-fixture';
+              link.innerHTML = `
+                <span id="broken-image-wrapper"><img id="broken-nitro-image" alt="?" src="data:image/png;base64,iVBORw0KGgo="></span>
+                <span id="broken-text-wrapper"><i id="broken-nitro-text">?</i></span>
+                <span>Nitro</span>`;
+              document.body.appendChild(link);
+
+              const renderedLink = document.createElement('a');
+              renderedLink.id = 'rendered-nitro-fixture';
+              renderedLink.innerHTML = `
+                <div id="rendered-nitro-layout" class="layout_fixture">
+                  <div id="rendered-nitro-artwork" class="avatar_fixture"><canvas></canvas></div>
+                  <span>Nitro</span>
+                </div>`;
+              document.body.appendChild(renderedLink);
+            })()
+            """
+        )
+        try await Task.sleep(for: .milliseconds(300))
+
+        let state = try await webView.evaluateJavaScript(
+            """
+            (() => ({
+              imageMarked: document.getElementById('broken-nitro-image')
+                .hasAttribute('data-sidecord-nitro-broken-artwork'),
+              imageFallback: document.getElementById('broken-image-wrapper')
+                .hasAttribute('data-sidecord-nitro-icon-fallback'),
+              textMarked: document.getElementById('broken-nitro-text')
+                .hasAttribute('data-sidecord-nitro-broken-artwork'),
+              textFallback: document.getElementById('broken-text-wrapper')
+                .hasAttribute('data-sidecord-nitro-icon-fallback'),
+              imageDisplay: getComputedStyle(document.getElementById('broken-nitro-image')).display,
+              textDisplay: getComputedStyle(document.getElementById('broken-nitro-text')).display,
+              renderedArtworkMarked: document.getElementById('rendered-nitro-artwork')
+                .hasAttribute('data-sidecord-nitro-static-artwork'),
+              renderedWrapperMarked: document.getElementById('rendered-nitro-layout')
+                .hasAttribute('data-sidecord-nitro-static-wrapper'),
+              renderedArtworkDisplay: getComputedStyle(
+                document.getElementById('rendered-nitro-artwork')
+              ).display,
+              renderedFallbackContent: getComputedStyle(
+                document.getElementById('rendered-nitro-layout'), '::before'
+              ).content
+            }))()
+            """
+        ) as! [String: Any]
+        XCTAssertEqual(state["imageMarked"] as? Bool, true)
+        XCTAssertEqual(state["imageFallback"] as? Bool, true)
+        XCTAssertEqual(state["textMarked"] as? Bool, true)
+        XCTAssertEqual(state["textFallback"] as? Bool, true)
+        XCTAssertEqual(state["imageDisplay"] as? String, "none")
+        XCTAssertEqual(state["textDisplay"] as? String, "none")
+        XCTAssertEqual(state["renderedArtworkMarked"] as? Bool, true)
+        XCTAssertEqual(state["renderedWrapperMarked"] as? Bool, true)
+        XCTAssertEqual(state["renderedArtworkDisplay"] as? String, "none")
+        XCTAssertEqual(state["renderedFallbackContent"] as? String, "\"✦\"")
+    }
+
+    func testSettingsBridgeWaitsForDiscordsLazyStructuralSettingsLayer() async throws {
+        let recorder = RuntimeMessageRecorder()
+        let (webView, navigationWaiter) = try await loadFixture(messageRecorder: recorder)
+        _ = navigationWaiter
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const trigger = document.createElement('button');
+              trigger.setAttribute('aria-label', 'Paramètres utilisateur');
+              trigger.addEventListener('click', () => setTimeout(() => {
+                const shell = document.createElement('div');
+                shell.className = 'standardSidebarView__23e6b';
+                shell.innerHTML = `
+                  <aside class="sidebarRegion__23e6b"><div class="sidebarRegionScroller__23e6b">
+                    <nav class="sidebar__23e6b"><div class="side_b3f026">
+                      <div class="header_b3f026">Activité</div>
+                      <div class="item_b3f026 selected_b3f026">Confidentialité des activités</div>
+                      <div class="item_b3f026">Notifications</div>
+                      <div class="separator_b3f026"></div>
+                      <div class="item_b3f026 colorDanger_b3f026">Déconnexion</div>
+                    </div></nav>
+                  </div></aside>
+                  <main class="contentRegion__23e6b"><div class="contentRegionScroller__23e6b">
+                    <div class="contentColumn__23e6b">Account</div>
+                  </div></main>`;
+                document.body.appendChild(shell);
+              }, 180));
+              document.body.appendChild(trigger);
+              const router = { openUserSettings() { window.__sidecordRouterWasCalled = true; } };
+              const require = {
+                b: 'https://discord.com/assets/',
+                c: { router: { exports: { router } } },
+                m: {}
+              };
+              const chunks = [];
+              chunks.push = chunk => {
+                if (typeof chunk?.[2] === 'function') chunk[2](require);
+                return chunks.length;
+              };
+              window.webpackChunkdiscord_app = chunks;
+            })()
+            """
+        )
+        let snapshot = SideCordSettingsSnapshot(
+            sidebarEdge: "right",
+            edgeHoverEnabled: true,
+            sidebarWidth: 420,
+            sidebarInset: 16,
+            discordLayoutMode: "full",
+            floatingRailEnabled: true,
+            visualTheme: "discord",
+            themeAccent: "blurple",
+            themeIntensity: 1,
+            themeColorScheme: "system",
+            notificationGlowEnabled: true,
+            attentionGlowColor: "followTheme",
+            attentionGlowStrength: "normal",
+            incomingCallCardEnabled: true,
+            pluginsInstalled: 0,
+            pluginsEnabled: 0
+        )
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.settingsBridgeUserScriptSource(snapshot: snapshot)
+        )
+        let started = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.openSideCordSettingsSource()
+        ) as? Bool
+        XCTAssertEqual(started, true)
+        try await Task.sleep(for: .milliseconds(650))
+
+        let state = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const nav = document.querySelector('[data-sidecord-settings-nav]');
+              const page = document.querySelector('[data-sidecord-settings-page]');
+              return {
+                mounted: !!nav && !!page,
+                selected: nav?.getAttribute('aria-selected'),
+                nativeClass: nav?.classList.contains('item_b3f026'),
+                visible: page ? !page.hidden : false,
+                heading: nav?.previousElementSibling?.textContent,
+                beforeLogout: !!nav?.nextElementSibling?.classList.contains('colorDanger_b3f026'),
+                routerWasCalled: window.__sidecordRouterWasCalled === true
+              };
+            })()
+            """
+        ) as! [String: Any]
+        XCTAssertEqual(state["mounted"] as? Bool, true)
+        XCTAssertEqual(state["selected"] as? String, "true")
+        XCTAssertEqual(state["nativeClass"] as? Bool, true)
+        XCTAssertEqual(state["visible"] as? Bool, true)
+        XCTAssertEqual(state["heading"] as? String, "SideCord")
+        XCTAssertEqual(state["beforeLogout"] as? Bool, true)
+        XCTAssertEqual(state["routerWasCalled"] as? Bool, true)
+    }
+
+    func testSettingsBridgeMountsInDiscordsCompactSettingsSections() async throws {
+        let recorder = RuntimeMessageRecorder()
+        let (webView, navigationWaiter) = try await loadFixture(messageRecorder: recorder)
+        _ = navigationWaiter
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const shell = document.createElement('div');
+              shell.className = 'container_abd9a8';
+              shell.innerHTML = `
+                <aside class="sidebar__409aa"><nav class="nav__409aa">
+                  <div class="navScroller__409aa"><ul class="sublist__409aa" role="list">
+                    <li class="section__409aa">
+                      <div class="sectionLabel__409aa"><h3 class="label__409aa">Experience</h3></div>
+                      <ul class="sectionList__409aa"><li class="itemContainer_caf372">
+                        <div class="item_caf372 active_caf372" role="link"><span>Appearance</span></div>
+                      </li></ul>
+                    </li>
+                    <li class="section__409aa">
+                      <div class="sectionLabel__409aa"><h3 class="label__409aa">Activity</h3></div>
+                      <ul class="sectionList__409aa"><li class="itemContainer_caf372">
+                        <div class="item_caf372" role="link"><span>Activity Privacy</span></div>
+                      </li></ul>
+                    </li>
+                    <li class="section__409aa"><span>Utility</span><ul class="sectionList__409aa">
+                      <li class="itemContainer_caf372"><div class="item_caf372 destructive_caf372" role="link"><span>Log Out</span></div></li>
+                    </ul></li>
+                  </ul></div>
+                </nav></aside>
+                <div class="content_e9e3ed"><div class="contentBody_e9e3ed">Discord content</div></div>`;
+              document.body.appendChild(shell);
+            })()
+            """
+        )
+        let snapshot = SideCordSettingsSnapshot(
+            sidebarEdge: "right",
+            edgeHoverEnabled: true,
+            sidebarWidth: 420,
+            sidebarInset: 16,
+            discordLayoutMode: "full",
+            floatingRailEnabled: true,
+            visualTheme: "discord",
+            themeAccent: "white",
+            themeIntensity: 1,
+            themeColorScheme: "dark",
+            notificationGlowEnabled: true,
+            attentionGlowColor: "white",
+            attentionGlowStrength: "normal",
+            incomingCallCardEnabled: true,
+            pluginsInstalled: 1,
+            pluginsEnabled: 1,
+            plugins: [
+                SideCordPluginSettingsSnapshot(
+                    identifier: "dev.sidecord.fixture",
+                    name: "Fixture Plugin",
+                    version: "1.0.0",
+                    enabled: true
+                )
+            ]
+        )
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.settingsBridgeUserScriptSource(snapshot: snapshot)
+        )
+        try await waitForRuntime()
+        let opened = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.openSideCordSettingsSource()
+        ) as? Bool
+        XCTAssertEqual(opened, true)
+
+        let state = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const section = document.querySelector('[data-sidecord-settings-section]');
+              const navs = [...document.querySelectorAll('[data-sidecord-settings-nav]')];
+              const nav = document.querySelector('[data-sidecord-settings-nav="settings"]');
+              const page = document.querySelector('[data-sidecord-settings-page]');
+              const sections = [...document.querySelector('.sublist__409aa').children];
+              return {
+                sectionText: section?.textContent?.replace(/\\s+/g, ' ').trim(),
+                navLabels: navs.map(item => item.getAttribute('aria-label')),
+                distinctIcons: new Set(navs.map(item => item.querySelector('path')?.getAttribute('d'))).size,
+                nativeSectionClass: section?.classList.contains('section__409aa'),
+                nativeItemClass: nav?.classList.contains('item_caf372'),
+                beforeUtility: sections.indexOf(section) === sections.length - 2,
+                selected: nav?.classList.contains('active_caf372'),
+                pageVisible: page ? !page.hidden : false,
+                pageInContent: !!page?.closest('.content_e9e3ed'),
+                discordPanelHidden: getComputedStyle(document.querySelector('.contentBody_e9e3ed')).display === 'none',
+                visibleSettingsSections: [...page.querySelectorAll('.sc-section')]
+                  .filter(item => getComputedStyle(item).display !== 'none')
+                  .map(item => item.getAttribute('data-sidecord-page'))
+              };
+            })()
+            """
+        ) as! [String: Any]
+        XCTAssertEqual(state["sectionText"] as? String, "SideCordThemeLayoutSettingsPlugins")
+        XCTAssertEqual(state["navLabels"] as? [String], ["Theme", "Layout", "Settings", "Plugins"])
+        XCTAssertEqual(state["distinctIcons"] as? Int, 4)
+        XCTAssertEqual(state["nativeSectionClass"] as? Bool, true)
+        XCTAssertEqual(state["nativeItemClass"] as? Bool, true)
+        XCTAssertEqual(state["beforeUtility"] as? Bool, true)
+        XCTAssertEqual(state["selected"] as? Bool, true)
+        XCTAssertEqual(state["pageVisible"] as? Bool, true)
+        XCTAssertEqual(state["pageInContent"] as? Bool, true)
+        XCTAssertEqual(state["discordPanelHidden"] as? Bool, true)
+        XCTAssertEqual(state["visibleSettingsSections"] as? [String], ["settings", "settings"])
+
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const range = document.querySelector('[data-sidecord-key="sidebarWidth"]');
+              range.dispatchEvent(new Event('pointerdown', { bubbles:true }));
+              range.value = '780';
+              range.dispatchEvent(new Event('input', { bubbles:true }));
+            })()
+            """
+        )
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.settingsBridgeUserScriptSource(snapshot: snapshot)
+        )
+        let activeSliderValue = try await webView.evaluateJavaScript(
+            "document.querySelector('[data-sidecord-key=\"sidebarWidth\"]').value"
+        ) as? String
+        XCTAssertEqual(activeSliderValue, "780")
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const range = document.querySelector('[data-sidecord-key="sidebarWidth"]');
+              range.dispatchEvent(new Event('pointerup', { bubbles:true }));
+            })()
+            """
+        )
+
+        _ = try await webView.evaluateJavaScript(
+            "document.querySelector('[data-sidecord-settings-nav=\"theme\"]').click()"
+        )
+        let themeState = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const page = document.querySelector('[data-sidecord-settings-page]');
+              return {
+                title: page.querySelector('[data-sidecord-page-title]').textContent,
+                visiblePages: [...page.querySelectorAll('.sc-section')]
+                  .filter(item => getComputedStyle(item).display !== 'none')
+                  .map(item => item.getAttribute('data-sidecord-page')),
+                selected: document.querySelector('[data-sidecord-settings-nav="theme"]')
+                  .classList.contains('active_caf372')
+              };
+            })()
+            """
+        ) as! [String: Any]
+        XCTAssertEqual(themeState["title"] as? String, "SideCord Theme")
+        XCTAssertEqual(themeState["visiblePages"] as? [String], ["theme"])
+        XCTAssertEqual(themeState["selected"] as? Bool, true)
+
+        _ = try await webView.evaluateJavaScript(
+            "document.querySelector('[data-sidecord-action=\"resetTheme\"]').click()"
+        )
+        _ = try await webView.evaluateJavaScript(
+            "document.querySelector('[data-sidecord-settings-nav=\"plugins\"]').click()"
+        )
+        let pluginState = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const toggle = document.querySelector('[data-sidecord-plugin-enabled]');
+              toggle.checked = false;
+              toggle.dispatchEvent(new Event('change', { bubbles:true }));
+              return {
+                text: document.querySelector('[data-sidecord-plugin-list]').textContent,
+                installButton: !!document.querySelector('[data-sidecord-action="installPlugin"]'),
+                removeButton: !!document.querySelector('[data-sidecord-plugin-remove]')
+              };
+            })()
+            """
+        ) as! [String: Any]
+        XCTAssertTrue((pluginState["text"] as? String)?.contains("Fixture Plugin") == true)
+        XCTAssertEqual(pluginState["installButton"] as? Bool, true)
+        XCTAssertEqual(pluginState["removeButton"] as? Bool, true)
+        XCTAssertTrue(recorder.messages.contains { message in
+            message["type"] as? String == "settingsAction"
+                && message["action"] as? String == "resetTheme"
+        })
+        XCTAssertTrue(recorder.messages.contains { message in
+            message["type"] as? String == "settingsAction"
+                && message["action"] as? String == "setPluginEnabled"
+                && message["identifier"] as? String == "dev.sidecord.fixture"
+        })
+
+        _ = try await webView.evaluateJavaScript(
+            "document.querySelector('.section__409aa [role=\"link\"]:not([data-sidecord-settings-nav])').click()"
+        )
+        let restored = try await webView.evaluateJavaScript(
+            """
+            (() => ({
+              pageHidden: document.querySelector('[data-sidecord-settings-page]').hidden,
+              discordPanelDisplay: getComputedStyle(document.querySelector('.contentBody_e9e3ed')).display,
+              discordPanelAriaHidden: document.querySelector('.contentBody_e9e3ed').getAttribute('aria-hidden')
+            }))()
+            """
+        ) as! [String: Any]
+        XCTAssertEqual(restored["pageHidden"] as? Bool, true)
+        XCTAssertNotEqual(restored["discordPanelDisplay"] as? String, "none")
+        XCTAssertTrue(restored["discordPanelAriaHidden"] is NSNull)
+    }
+
+    func testSettingsBridgePatchesDiscordsNativeSettingsLayoutModel() async throws {
+        let (webView, navigationWaiter) = try await loadFixture()
+        _ = navigationWaiter
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const root = {
+                key: '$Root',
+                buildLayout: () => [
+                  { key: 'user_section', type: 1 },
+                  { key: 'activity_section', type: 1 },
+                  { key: 'utility_section', type: 1 }
+                ]
+              };
+              const router = {
+                openUserSettings(key, options) {
+                  window.__sidecordOpenedNativeSettings = { key, section: options?.section };
+                }
+              };
+              const react = {
+                createElement() {}, useState() {}, useEffect() {}
+              };
+              const require = {
+                b: 'https://discord.com/assets/',
+                c: {
+                  react: { exports: react }
+                },
+                m: {}
+              };
+              const chunks = [];
+              chunks.push = chunk => {
+                if (typeof chunk?.[2] === 'function') chunk[2](require);
+                return chunks.length;
+              };
+              window.webpackChunkdiscord_app = chunks;
+              window.__sidecordRootLayout = root;
+              window.__sidecordSettingsModules = { require, root, router };
+            })()
+            """
+        )
+        let snapshot = SideCordSettingsSnapshot(
+            sidebarEdge: "right",
+            edgeHoverEnabled: true,
+            sidebarWidth: 420,
+            sidebarInset: 16,
+            discordLayoutMode: "full",
+            floatingRailEnabled: true,
+            visualTheme: "discord",
+            themeAccent: "white",
+            themeIntensity: 1,
+            themeColorScheme: "dark",
+            notificationGlowEnabled: true,
+            attentionGlowColor: "white",
+            attentionGlowStrength: "normal",
+            incomingCallCardEnabled: true,
+            pluginsInstalled: 0,
+            pluginsEnabled: 0
+        )
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.settingsBridgeUserScriptSource(snapshot: snapshot)
+        )
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const modules = window.__sidecordSettingsModules;
+              modules.require.c.root = { exports: { root: modules.root } };
+              modules.require.c.router = { exports: { router: modules.router } };
+              document.body.appendChild(document.createElement('div'));
+            })()
+            """
+        )
+        try await waitForRuntime()
+        let opened = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.openSideCordSettingsSource()
+        ) as? Bool
+        XCTAssertEqual(opened, true)
+
+        let state = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const layout = window.__sidecordRootLayout.buildLayout();
+              const section = layout.find(entry => entry?.key === 'sidecord_section');
+              const items = section?.buildLayout?.() || [];
+              const item = items.find(entry => entry?.key === 'sidecord_settings');
+              const panel = item?.buildLayout?.()[0];
+              const category = panel?.buildLayout?.()[0];
+              const custom = category?.buildLayout?.()[0];
+              return {
+                afterActivity: layout.findIndex(entry => entry?.key === 'sidecord_section') ===
+                  layout.findIndex(entry => entry?.key === 'activity_section') + 1,
+                sectionType: section?.type,
+                itemKeys: items.map(entry => entry?.key),
+                itemType: item?.type,
+                panelKey: panel?.key,
+                customType: custom?.type,
+                openedKey: window.__sidecordOpenedNativeSettings?.key,
+                openedSection: window.__sidecordOpenedNativeSettings?.section
+              };
+            })()
+            """
+        ) as! [String: Any]
+        XCTAssertEqual(state["afterActivity"] as? Bool, true)
+        XCTAssertEqual(state["sectionType"] as? Int, 1)
+        XCTAssertEqual(
+            state["itemKeys"] as? [String],
+            ["sidecord_theme", "sidecord_layout", "sidecord_settings", "sidecord_plugins"]
+        )
+        XCTAssertEqual(state["itemType"] as? Int, 2)
+        XCTAssertEqual(state["panelKey"] as? String, "sidecord_settings_panel")
+        XCTAssertEqual(state["customType"] as? Int, 19)
+        XCTAssertEqual(state["openedKey"] as? String, "sidecord_settings_panel")
+        XCTAssertEqual(state["openedSection"] as? String, "sidecord_settings")
+    }
+
+    func testSettingsBridgeCogOpensDiscordSettingsBeforeLazyLayoutLoads() async throws {
+        let (webView, navigationWaiter) = try await loadFixture()
+        _ = navigationWaiter
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const router = { openUserSettings(key) { window.__sidecordCogOpenedKey = key; } };
+              const require = {
+                b: 'https://discord.com/assets/',
+                c: { router: { exports: { router } } },
+                m: {}
+              };
+              const chunks = [];
+              chunks.push = chunk => {
+                if (typeof chunk?.[2] === 'function') chunk[2](require);
+                return chunks.length;
+              };
+              window.webpackChunkdiscord_app = chunks;
+            })()
+            """
+        )
+        let snapshot = SideCordSettingsSnapshot(
+            sidebarEdge: "right",
+            edgeHoverEnabled: true,
+            sidebarWidth: 420,
+            sidebarInset: 16,
+            discordLayoutMode: "full",
+            floatingRailEnabled: true,
+            visualTheme: "discord",
+            themeAccent: "white",
+            themeIntensity: 1,
+            themeColorScheme: "dark",
+            notificationGlowEnabled: true,
+            attentionGlowColor: "white",
+            attentionGlowStrength: "normal",
+            incomingCallCardEnabled: true,
+            pluginsInstalled: 0,
+            pluginsEnabled: 0
+        )
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.settingsBridgeUserScriptSource(snapshot: snapshot)
+        )
+        let opened = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.openSideCordSettingsSource()
+        ) as? Bool
+        let key = try await webView.evaluateJavaScript("window.__sidecordCogOpenedKey") as? String
+        XCTAssertEqual(opened, true)
+        XCTAssertEqual(key, "my_account_panel")
+    }
+
     private func makeConfiguration(
         navigation: DiscordNavigationPresentation,
         composer: DiscordComposerMode,
@@ -1903,19 +2622,6 @@ final class WebCSSRuntimeTests: XCTestCase {
         return false
     }
 
-    private func waitForNotificationSoundCapture(
-        in webView: WKWebView
-    ) async throws -> Bool {
-        for _ in 0..<30 {
-            let isReady = try await webView.evaluateJavaScript(
-                "window['\(DiscordCSSComposer.notificationBridgeKey)']?.capturesNotificationSounds === true"
-            ) as! Bool
-            if isReady { return true }
-            try await Task.sleep(for: .milliseconds(100))
-        }
-        return false
-    }
-
     private func waitForServiceWorkerNotificationBaseline(
         in webView: WKWebView
     ) async throws -> Bool {
@@ -1924,6 +2630,19 @@ final class WebCSSRuntimeTests: XCTestCase {
                 "window['\(DiscordCSSComposer.notificationBridgeKey)']?.serviceWorkerNotificationsBaselined === true"
             ) as! Bool
             if isBaselined { return true }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        return false
+    }
+
+    private func waitForNotificationSoundCapture(
+        in webView: WKWebView
+    ) async throws -> Bool {
+        for _ in 0..<30 {
+            let isReady = try await webView.evaluateJavaScript(
+                "window['\(DiscordCSSComposer.notificationBridgeKey)']?.capturesNotificationSounds === true"
+            ) as! Bool
+            if isReady { return true }
             try await Task.sleep(for: .milliseconds(100))
         }
         return false

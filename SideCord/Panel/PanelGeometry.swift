@@ -8,6 +8,10 @@ enum PanelGeometry {
     static let railGap: CGFloat = 12
     static let railVerticalInset: CGFloat = 12
     static let attentionGlowWidth: CGFloat = 72
+    static let incomingCallCardSize = NSSize(width: 292, height: 92)
+    static let incomingCallCardInset: CGFloat = 14
+    static let onboardingCompanionSize = NSSize(width: 430, height: 650)
+    static let onboardingCompanionGap: CGFloat = 18
 
     static func displayID(for screen: NSScreen) -> String {
         let key = NSDeviceDescriptionKey("NSScreenNumber")
@@ -124,6 +128,65 @@ enum PanelGeometry {
             y: screenFrame.minY,
             width: safeWidth,
             height: max(1, screenFrame.height)
+        )
+    }
+
+    static func incomingCallCardFrame(
+        in screenFrame: NSRect,
+        edge: SidebarEdge,
+        size: NSSize = incomingCallCardSize,
+        inset: CGFloat = incomingCallCardInset
+    ) -> NSRect {
+        let width = min(max(1, size.width), max(1, screenFrame.width))
+        let height = min(max(1, size.height), max(1, screenFrame.height))
+        let safeInset = min(max(0, inset), max(0, screenFrame.width - width))
+        return NSRect(
+            x: edge == .left
+                ? screenFrame.minX + safeInset
+                : screenFrame.maxX - width - safeInset,
+            y: screenFrame.midY - (height / 2),
+            width: width,
+            height: height
+        )
+    }
+
+    static func onboardingCompanionFrame(
+        adjacentTo sidebarFrame: NSRect,
+        in usableFrame: NSRect,
+        edge: SidebarEdge,
+        requestedSize: NSSize = onboardingCompanionSize
+    ) -> NSRect {
+        let availableWidth = max(1, usableFrame.width - 24)
+        let availableHeight = max(1, usableFrame.height - 24)
+        let requestedWidth = requestedSize.width.isFinite
+            ? requestedSize.width
+            : onboardingCompanionSize.width
+        let requestedHeight = requestedSize.height.isFinite
+            ? requestedSize.height
+            : onboardingCompanionSize.height
+        let width = min(max(1, requestedWidth), availableWidth)
+        let height = min(max(1, requestedHeight), availableHeight)
+        let preferredX = edge == .right
+            ? sidebarFrame.minX - onboardingCompanionGap - width
+            : sidebarFrame.maxX + onboardingCompanionGap
+        let fallbackX = edge == .right
+            ? sidebarFrame.minX - (width * 0.72)
+            : sidebarFrame.maxX - (width * 0.28)
+        let x = min(
+            max(preferredX, usableFrame.minX + 12),
+            usableFrame.maxX - width - 12
+        )
+        let resolvedX = sidebarFrame.intersects(
+            NSRect(x: x, y: sidebarFrame.midY - height / 2, width: width, height: height)
+        ) ? min(max(fallbackX, usableFrame.minX + 12), usableFrame.maxX - width - 12) : x
+        return NSRect(
+            x: resolvedX,
+            y: min(
+                max(sidebarFrame.midY - height / 2, usableFrame.minY + 12),
+                usableFrame.maxY - height - 12
+            ),
+            width: width,
+            height: height
         )
     }
 

@@ -143,6 +143,8 @@ final class WebCSSComposerTests: XCTestCase {
         XCTAssertTrue(script.contains("getNotifications"))
         XCTAssertTrue(script.contains("knownServiceWorkerNotificationsByScope"))
         XCTAssertTrue(script.contains("usesVirtualPermission"))
+        XCTAssertTrue(script.contains("previousBridge.repair?.()"))
+        XCTAssertTrue(script.contains("bridge.repair?.()"))
         XCTAssertTrue(script.contains("capturesPageNotifications"))
         XCTAssertTrue(script.contains("capturesNotificationSounds"))
         XCTAssertTrue(script.contains("HTMLMediaElement"))
@@ -178,6 +180,27 @@ final class WebCSSComposerTests: XCTestCase {
         )
     }
 
+    func testIncomingCallActionsAreNarrowlyAllowListed() {
+        let answer = DiscordCSSComposer.incomingCallActionSource("answer")
+        let decline = DiscordCSSComposer.incomingCallActionSource("decline")
+
+        XCTAssertTrue(answer.contains("answerIncomingCall"))
+        XCTAssertTrue(decline.contains("declineIncomingCall"))
+        XCTAssertEqual(DiscordCSSComposer.incomingCallActionSource("clickAnything"), "false;")
+    }
+
+    func testWhiteAccentMapsToStableCSSValues() {
+        let configuration = DiscordCSSComposer.runtimeConfiguration(
+            layoutOptions: .full,
+            visualTheme: .systemGlass,
+            themeAccent: .white,
+            themeIntensity: 1,
+            themeColorScheme: .dark
+        )
+        XCTAssertEqual(configuration.rootVariables["--sidecord-accent-color"], "#ffffff")
+        XCTAssertEqual(configuration.rootVariables["--sidecord-accent-rgb"], "255 255 255")
+    }
+
     func testCustomCSSRejectsNetworkLoadingPrimitives() {
         let unsafeCSS = """
         @import "https://example.com/theme.css" screen;
@@ -208,6 +231,37 @@ final class WebCSSComposerTests: XCTestCase {
         XCTAssertTrue(script.contains("discordapp.com"))
         XCTAssertTrue(script.contains(DiscordCSSComposer.styleElementID))
         XCTAssertFalse(script.contains("const nextCSS = \(css);"))
+    }
+
+    func testSettingsBridgeIsUpdateableScopedAndOpenable() {
+        let snapshot = SideCordSettingsSnapshot(
+            sidebarEdge: "right",
+            edgeHoverEnabled: true,
+            sidebarWidth: 420,
+            sidebarInset: 16,
+            discordLayoutMode: "full",
+            floatingRailEnabled: true,
+            visualTheme: "systemGlass",
+            themeAccent: "white",
+            themeIntensity: 0.8,
+            themeColorScheme: "system",
+            notificationGlowEnabled: true,
+            attentionGlowColor: "white",
+            attentionGlowStrength: "normal",
+            incomingCallCardEnabled: true,
+            pluginsInstalled: 2,
+            pluginsEnabled: 1
+        )
+        let script = DiscordCSSComposer.settingsBridgeUserScriptSource(snapshot: snapshot)
+
+        XCTAssertTrue(script.contains(DiscordCSSComposer.settingsBridgeKey))
+        XCTAssertTrue(script.contains("previous.update(nextSnapshot)"))
+        XCTAssertTrue(script.contains("data-sidecord-settings-nav"))
+        XCTAssertTrue(script.contains("data-sidecord-settings-page"))
+        XCTAssertTrue(script.contains(#"type: "settingsSet""#))
+        XCTAssertTrue(script.contains(#"type: "settingsHealth""#))
+        XCTAssertTrue(script.contains("White"))
+        XCTAssertTrue(DiscordCSSComposer.openSideCordSettingsSource().contains("bridge.open()"))
     }
 
     private func configuration(

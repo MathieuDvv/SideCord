@@ -145,7 +145,10 @@ struct DiscordRailView: View {
     }
 
     private var railBackground: some ShapeStyle {
-        Color.black.opacity(settings.visualTheme == .oled ? 0.82 : 0.50)
+        if settings.themeColorScheme == .light {
+            return Color.white.opacity(settings.visualTheme == .oled ? 0.92 : 0.64)
+        }
+        return Color.black.opacity(settings.visualTheme == .oled ? 0.82 : 0.50)
     }
 
     private var preferredColorScheme: ColorScheme? {
@@ -157,13 +160,11 @@ struct DiscordRailView: View {
     }
 
     private var accentColor: Color {
-        switch settings.themeAccent {
-        case .automatic, .blurple: Color(red: 0.345, green: 0.396, blue: 0.949)
-        case .blue: .blue
-        case .purple: .purple
-        case .pink: .pink
-        case .green: .green
-        case .orange: .orange
-        }
+        let descriptor = settings.themeAccent.colorDescriptor
+        return Color(
+            red: descriptor.redUnit,
+            green: descriptor.greenUnit,
+            blue: descriptor.blueUnit
+        )
     }
 }

@@ -87,8 +87,7 @@ final class WebConfigurationTests: XCTestCase {
 
     @MainActor
     func testAttentionModelBaselinesExistingBadgesAndSignalsNewActivity() {
-        var currentTime: TimeInterval = 1_000
-        let model = DiscordAttentionModel(now: { currentTime })
+        let model = DiscordAttentionModel()
         let baseline = [
             railItem(id: "direct-messages", unread: true, mentions: 2),
             railItem(id: "server:1", unread: false, mentions: nil)
@@ -106,49 +105,46 @@ final class WebConfigurationTests: XCTestCase {
         ])
         XCTAssertEqual(model.notificationSequence, 1)
 
-        // The HTML Notification event and its rail mutation are two views of
-        // the same delivery, so the short coalescing window keeps one pulse.
+        // Every explicit delivery remains observable. Duplicate signal paths
+        // merely restart the current glow instead of risking a dropped event.
         model.receiveNotification()
-        XCTAssertEqual(model.notificationSequence, 1)
-
-        currentTime += 1
-        model.receiveRailItems([
-            railItem(id: "direct-messages", unread: true, mentions: 3),
-            railItem(id: "server:1", unread: true, mentions: nil)
-        ])
         XCTAssertEqual(model.notificationSequence, 2)
 
         model.receiveRailItems([
             railItem(id: "direct-messages", unread: true, mentions: 3),
             railItem(id: "server:1", unread: true, mentions: nil)
         ])
-        XCTAssertEqual(model.notificationSequence, 2)
+        XCTAssertEqual(model.notificationSequence, 3)
+
+        model.receiveRailItems([
+            railItem(id: "direct-messages", unread: true, mentions: 3),
+            railItem(id: "server:1", unread: true, mentions: nil)
+        ])
+        XCTAssertEqual(model.notificationSequence, 3)
 
         model.receiveRailItems([
             railItem(id: "direct-messages", unread: true, mentions: 3),
             railItem(id: "server:2", unread: true, mentions: 4)
         ])
-        XCTAssertEqual(model.notificationSequence, 2)
+        XCTAssertEqual(model.notificationSequence, 3)
 
         model.receiveRailItems([])
         model.receiveRailItems([
             railItem(id: "direct-messages", unread: true, mentions: 8),
             railItem(id: "server:1", unread: true, mentions: nil)
         ])
-        XCTAssertEqual(model.notificationSequence, 2)
+        XCTAssertEqual(model.notificationSequence, 4)
 
         model.receiveNotification()
-        XCTAssertEqual(model.notificationSequence, 2)
+        XCTAssertEqual(model.notificationSequence, 5)
 
-        currentTime += 1
         model.receiveNotification()
-        XCTAssertEqual(model.notificationSequence, 3)
+        XCTAssertEqual(model.notificationSequence, 6)
 
         // Ordinary messages continue to pulse even while the server's unread
         // state remains true and its mention count does not change.
-        currentTime += 1
         model.receiveNotification()
-        XCTAssertEqual(model.notificationSequence, 4)
+        XCTAssertEqual(model.notificationSequence, 7)
     }
 
     @MainActor
@@ -164,6 +160,23 @@ final class WebConfigurationTests: XCTestCase {
 
         model.receiveRailItems([railItem(id: "server:1", unread: true, mentions: 1)])
         XCTAssertEqual(model.notificationSequence, 0)
+    }
+
+    @MainActor
+    func testIncomingCallDescriptorIsBoundedNormalizedAndMemoryOnly() {
+        let model = DiscordAttentionModel()
+        model.setIncomingCall(IncomingCallDescriptor(
+            id: String(repeating: "x", count: 200),
+            displayName: "  Ada   Lovelace\n"
+        ))
+
+        XCTAssertEqual(model.incomingCall?.id.count, 128)
+        XCTAssertEqual(model.incomingCall?.displayName, "Ada Lovelace")
+        XCTAssertTrue(model.isIncomingCallActive)
+
+        model.reset()
+        XCTAssertNil(model.incomingCall)
+        XCTAssertFalse(model.isIncomingCallActive)
     }
 
     @MainActor

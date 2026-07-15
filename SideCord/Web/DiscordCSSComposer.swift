@@ -12,7 +12,7 @@ struct DiscordCSSRuntimeConfiguration: Encodable, Equatable, Sendable {
 enum DiscordCSSComposer {
     static let styleElementID = "sidecord-injected-css"
     static let runtimeKey = "__sidecordWebRuntime_v3__"
-    static let notificationBridgeKey = "__sidecordNotificationBridge_v3__"
+    static let notificationBridgeKey = "__sidecordNotificationBridge_v5__"
     static let messageHandlerName = "sidecordRuntime"
 
     static let managedConfigurationAttributeNames = [
@@ -53,6 +53,7 @@ enum DiscordCSSComposer {
         layoutModifiersCSS: String = "",
         visualThemesCSS: String = "",
         layoutOptions: DiscordLayoutOptions = .full,
+        pluginCSS: String = "",
         customCSS: String,
         customCSSEnabled: Bool
     ) -> String {
@@ -66,6 +67,10 @@ enum DiscordCSSComposer {
         // present makes a runtime mode change an atomic attribute update.
         append(layoutModifiersCSS, to: &sections)
         append(visualThemesCSS, to: &sections)
+
+        // Installed plugin sheets have already passed the same conservative
+        // validation as local custom CSS. User CSS remains last by design.
+        append(pluginCSS, to: &sections)
 
         // User CSS is intentionally last so an explicit user rule can override
         // every curated visual choice.
@@ -227,7 +232,10 @@ enum DiscordCSSComposer {
             fallbackTimer: 0,
             railReportTimer: 0,
             lastRailPayload: "",
+            lastHealthPayload: "",
             incomingCallActive: false,
+            incomingCallPayload: '{"type":"incomingCall","active":false}',
+            incomingCallElement: null,
             messageScanTimer: 0,
             messageArmTimer: 0,
             messageTrackingArmed: false,
@@ -250,7 +258,9 @@ enum DiscordCSSComposer {
             openDrawer: null,
             closeDrawer: null,
             toggleDrawer: null,
-            activateRailItem: null
+            activateRailItem: null,
+            answerIncomingCall: null,
+            declineIncomingCall: null
           };
 
           const currentRoot = () => document.documentElement;
@@ -264,15 +274,38 @@ enum DiscordCSSComposer {
             type: "drawer",
             open: !!open
           });
-          const reportIncomingCallState = active => {
-            const nextActive = !!active;
-            if (state.incomingCallActive === nextActive) return;
+          const reportIncomingCallState = descriptor => {
+            const nextActive = !!descriptor;
+            const payload = nextActive ? {
+              type: "incomingCall",
+              active: true,
+              callID: String(descriptor.callID || "incoming-discord-call").slice(0, 128),
+              displayName: String(descriptor.displayName || "Incoming Discord call").slice(0, 120)
+            } : { type: "incomingCall", active: false };
+            const serialized = JSON.stringify(payload);
+            if (state.incomingCallPayload === serialized) return;
             state.incomingCallActive = nextActive;
-            postRuntimeMessage({ type: "incomingCall", active: nextActive });
+            state.incomingCallPayload = serialized;
+            postRuntimeMessage(payload);
           };
           const reportMessageActivity = () => postRuntimeMessage({
             type: "notification"
           });
+          const reportIntegrationHealth = payload => {
+            const next = {
+              type: "health",
+              runtime: true,
+              guildRail: !!payload.guildRail,
+              channelList: !!payload.channelList,
+              composer: !!payload.composer,
+              incomingCall: !!payload.incomingCall,
+              callControls: !!payload.callControls
+            };
+            const serialized = JSON.stringify(next);
+            if (serialized === state.lastHealthPayload) return;
+            state.lastHealthPayload = serialized;
+            postRuntimeMessage(next);
+          };
 
           const resolvedColorScheme = () => {
             const requested = state.configuration.requestedColorScheme;
@@ -412,10 +445,52 @@ enum DiscordCSSComposer {
             return bounds.bottom > 0 && bounds.right > 0 &&
               bounds.top < window.innerHeight && bounds.left < window.innerWidth;
           };
-          const hasVisibleIncomingCall = () => safeQueryAll(
-            document,
-            incomingCallSelector
-          ).some(isVisiblyPresented);
+          const incomingCallDescriptor = () => {
+            const element = safeQueryAll(document, incomingCallSelector)
+              .find(isVisiblyPresented) || null;
+            state.incomingCallElement = element;
+            if (!element) return null;
+
+            const rawLabel = element.getAttribute("aria-label") || "";
+            const heading = safeQuery(element, "h1, h2, h3, [role='heading']");
+            const headingText = heading?.textContent || "";
+            const cleanedLabel = rawLabel
+              .replace(/^\\s*incoming\\s+call(?:\\s+from)?\\s*/i, "")
+              .trim();
+            const displayName = (cleanedLabel || headingText.trim() ||
+              "Incoming Discord call").replace(/\\s+/g, " ").slice(0, 120);
+            const callID = (element.id || element.getAttribute("data-list-item-id") ||
+              `incoming:${displayName}`).slice(0, 128);
+            return { callID, displayName };
+          };
+
+          const incomingCallActionButton = action => {
+            const container = state.incomingCallElement;
+            if (!container || !isVisiblyPresented(container)) return null;
+            const candidates = safeQueryAll(
+              container,
+              "button, [role='button']"
+            ).filter(isVisiblyPresented);
+            const pattern = action === "answer"
+              ? /\\b(answer|accept|join)\\b/i
+              : /\\b(decline|reject|dismiss)\\b/i;
+            const matches = candidates.filter(button => {
+              const semanticLabel = [
+                button.getAttribute("aria-label"),
+                button.getAttribute("title"),
+                button.getAttribute("data-list-item-id")
+              ].filter(Boolean).join(" ");
+              return pattern.test(semanticLabel);
+            });
+            return matches.length === 1 ? matches[0] : null;
+          };
+
+          const performIncomingCallAction = action => {
+            const button = incomingCallActionButton(action);
+            if (!button || typeof button.click !== "function") return false;
+            button.click();
+            return true;
+          };
           const currentChannelIsMuted = () => {
             const selected = safeQuery(
               document,
@@ -434,26 +509,18 @@ enum DiscordCSSComposer {
               /\\bmuted\\b/i.test(stateText) ||
               !!safeQuery(row, `${tokenSelector("modeMuted")}, ${tokenSelector("muted")}`);
           };
-          const messageHasNotificationSemantic = descriptor => {
-            const element = descriptor?.element;
-            return !!element && (
-              element.matches?.(tokenSelector("mentioned")) ||
-              !!safeQuery(element, tokenSelector("mentioned"))
-            );
-          };
           const timelineFallbackIsAllowed = descriptors => {
             const notificationBridge = window[notificationBridgeKey];
             if (notificationBridge && notificationBridge.enabled !== true) {
               return false;
             }
-            const bridgeCapturesNotificationSounds =
-              notificationBridge?.enabled === true &&
-              notificationBridge?.capturesNotificationSounds === true &&
-              window.HTMLMediaElement?.prototype?.play ===
-                notificationBridge?.mediaPlayProxy;
-            return !bridgeCapturesNotificationSounds &&
-              !currentChannelIsMuted() &&
-              descriptors.some(messageHasNotificationSemantic);
+            if (currentChannelIsMuted()) return false;
+            // Native code suppresses attention while SideCord is visible, so
+            // every newly appended message in an unmuted current channel is a
+            // safe fallback. Restricting this to mention styling caused ordinary
+            // notifications to disappear whenever Discord changed its exact
+            // Notification or sound implementation.
+            return descriptors.length > 0;
           };
           const normalizedSnowflake = value => {
             const digits = String(value || "").replace(/^0+/, "");
@@ -773,6 +840,73 @@ enum DiscordCSSComposer {
             }
           };
 
+          const reconcileNitroIconFallbacks = () => {
+            const links = safeQueryAll(document, "a, button, [role='link'], [role='button']")
+              .filter(element => /\\bnitro\\b/i.test(
+                `${element.getAttribute?.("aria-label") || ""} ${element.textContent || ""}`
+              ));
+            for (const link of links) {
+              link.setAttribute("data-sidecord-nitro-link", "");
+              for (const stale of safeQueryAll(
+                link,
+                "[data-sidecord-nitro-broken-artwork], [data-sidecord-nitro-icon-fallback], " +
+                  "[data-sidecord-nitro-static-artwork], [data-sidecord-nitro-static-wrapper]"
+              )) {
+                stale.removeAttribute("data-sidecord-nitro-broken-artwork");
+                stale.removeAttribute("data-sidecord-nitro-icon-fallback");
+                stale.removeAttribute("data-sidecord-nitro-static-artwork");
+                stale.removeAttribute("data-sidecord-nitro-static-wrapper");
+              }
+              const directRoot = link.firstElementChild;
+              const contentRoot = directRoot && /\\bnitro\\b/i.test(directRoot.textContent || "") &&
+                directRoot.children.length > 1 ? directRoot : link;
+              const iconCandidates = [...(contentRoot.children || [])].filter(element =>
+                !/\\bnitro\\b/i.test(element.textContent || "")
+              );
+              const iconSlot = iconCandidates.find(element => {
+                const className = String(element.className || "");
+                return /avatar|icon|art|emoji|nitro/i.test(className) ||
+                  !!safeQuery(element, "img, svg, canvas, video, picture");
+              }) || iconCandidates[0];
+              if (iconSlot) {
+                iconSlot.setAttribute("data-sidecord-nitro-static-artwork", "");
+                contentRoot.setAttribute("data-sidecord-nitro-static-wrapper", "");
+              }
+              const flagBrokenArtwork = element => {
+                if (!element || element === link) return;
+                element.setAttribute("data-sidecord-nitro-broken-artwork", "");
+                (element.parentElement || link).setAttribute(
+                  "data-sidecord-nitro-icon-fallback",
+                  ""
+                );
+              };
+              for (const image of safeQueryAll(link, "img")) {
+                if (!image.dataset.sidecordNitroFallbackBound) {
+                  image.dataset.sidecordNitroFallbackBound = "true";
+                  image.addEventListener("load", scheduleReconcile);
+                  image.addEventListener("error", scheduleReconcile);
+                }
+                const fallbackLabel = String(image.getAttribute("alt") || "").trim();
+                if ((image.complete && image.naturalWidth === 0) ||
+                    /^(?:\\?|❓|�)$/.test(fallbackLabel)) flagBrokenArtwork(image);
+              }
+              for (const element of safeQueryAll(link, "span, div, i")) {
+                if (element.children.length) continue;
+                const visibleFallback = String(element.textContent || "").trim();
+                let before = "";
+                let after = "";
+                try {
+                  before = getComputedStyle(element, "::before").content.replace(/[\"']/g, "");
+                  after = getComputedStyle(element, "::after").content.replace(/[\"']/g, "");
+                } catch (_) {}
+                if (/^(?:\\?|❓|�)$/.test(visibleFallback) ||
+                    /^(?:\\?|❓|�)$/.test(before) || /^(?:\\?|❓|�)$/.test(after)) {
+                  flagBrokenArtwork(element);
+                }
+              }
+            }
+          };
+
           const reconcileDiscordDOM = () => {
             const guildRail = resolveRole("guild-rail", findGuildRail);
             const channelList = resolveRole("channel-list", findChannelList);
@@ -781,8 +915,20 @@ enum DiscordCSSComposer {
             const composer = resolveRole("composer", findComposer);
             scheduleRailReport(guildRail);
             scheduleMessageScan();
-            reportIncomingCallState(hasVisibleIncomingCall());
+            const incomingCall = incomingCallDescriptor();
+            reportIncomingCallState(incomingCall);
+            const hasCallControls = !!incomingCall &&
+              !!incomingCallActionButton("answer") &&
+              !!incomingCallActionButton("decline");
+            reportIntegrationHealth({
+              guildRail,
+              channelList,
+              composer,
+              incomingCall,
+              callControls: hasCallControls
+            });
             bindAccountDockGeometry(channelList, accountDock);
+            reconcileNitroIconFallbacks();
 
             for (const composerRoot of new Set([previousComposer, composer])) {
               for (const oldControl of safeQueryAll(
@@ -941,6 +1087,8 @@ enum DiscordCSSComposer {
             });
             return true;
           };
+          state.answerIncomingCall = () => performIncomingCallAction("answer");
+          state.declineIncomingCall = () => performIncomingCallAction("decline");
 
           const elementFromEvent = event =>
             event.target && event.target.nodeType === Node.ELEMENT_NODE
@@ -1074,7 +1222,7 @@ enum DiscordCSSComposer {
             if (state.disposed) return;
             state.disposed = true;
             reportDrawerState(false);
-            reportIncomingCallState(false);
+            reportIncomingCallState(null);
             if (state.frameRequest) cancelAnimationFrame(state.frameRequest);
             if (state.fallbackTimer) clearTimeout(state.fallbackTimer);
             if (state.railReportTimer) clearTimeout(state.railReportTimer);
@@ -1102,6 +1250,15 @@ enum DiscordCSSComposer {
             }
             state.railElements.clear();
             postRuntimeMessage({ type: "rail", items: [] });
+            postRuntimeMessage({
+              type: "health",
+              runtime: false,
+              guildRail: false,
+              channelList: false,
+              composer: false,
+              incomingCall: false,
+              callControls: false
+            });
             currentStyle()?.remove();
             if (window[runtimeKey] === state) delete window[runtimeKey];
           };
@@ -1137,6 +1294,7 @@ enum DiscordCSSComposer {
           const previousBridge = window[bridgeKey];
           if (previousBridge && typeof previousBridge.update === "function") {
             previousBridge.update(nextEnabled);
+            previousBridge.repair?.();
             return;
           }
           if (previousBridge) return;
@@ -1171,7 +1329,12 @@ enum DiscordCSSComposer {
             serviceWorkerNotificationsBaselined: false,
             knownServiceWorkerNotificationsByScope: new Map(),
             serviceWorkerPollTimer: 0,
+            repairTimer: 0,
+            titleObserver: null,
+            titleElement: null,
+            lastTitleAttentionCount: 0,
             refreshPermissionState: null,
+            repair: null,
             update(enabled) {
               this.enabled = enabled === true;
               this.refreshPermissionState?.();
@@ -1357,16 +1520,20 @@ enum DiscordCSSComposer {
               return instance;
             }
           });
-          try { window.Notification = NotificationProxy; } catch (_) {}
-          if (window.Notification !== NotificationProxy) {
-            try {
-              Object.defineProperty(window, "Notification", {
-                configurable: true,
-                writable: true,
-                value: NotificationProxy
-              });
-            } catch (_) {}
-          }
+          const installNotificationProxy = () => {
+            try { window.Notification = NotificationProxy; } catch (_) {}
+            if (window.Notification !== NotificationProxy) {
+              try {
+                Object.defineProperty(window, "Notification", {
+                  configurable: true,
+                  writable: true,
+                  value: NotificationProxy
+                });
+              } catch (_) {}
+            }
+            return window.Notification === NotificationProxy;
+          };
+          installNotificationProxy();
           if (window.Notification === NotificationProxy) {
             bridge.originalNotification = typeof OriginalNotification === "function"
               ? OriginalNotification
@@ -1374,6 +1541,34 @@ enum DiscordCSSComposer {
             bridge.notificationProxy = NotificationProxy;
             bridge.capturesPageNotifications = true;
           }
+          bridge.repair = () => {
+            if (!bridge.enabled) return;
+            if (window.Notification !== bridge.notificationProxy) {
+              bridge.capturesPageNotifications = installNotificationProxy();
+            }
+            const currentMediaPrototype = window.HTMLMediaElement?.prototype;
+            if (bridge.mediaPlayProxy && currentMediaPrototype &&
+                currentMediaPrototype.play !== bridge.mediaPlayProxy) {
+              const descriptor = Object.getOwnPropertyDescriptor(
+                currentMediaPrototype,
+                "play"
+              );
+              try {
+                Object.defineProperty(currentMediaPrototype, "play", {
+                  configurable: descriptor?.configurable ?? true,
+                  enumerable: descriptor?.enumerable ?? false,
+                  writable: descriptor?.writable ?? true,
+                  value: bridge.mediaPlayProxy
+                });
+              } catch (_) {}
+            }
+            bridge.capturesNotificationSounds = !!bridge.mediaPlayProxy &&
+              currentMediaPrototype?.play === bridge.mediaPlayProxy &&
+              bridge.notificationSoundPaths.size > 0;
+            if (!bridge.capturesNotificationSounds) {
+              bridge.scheduleNotificationSoundDiscovery?.();
+            }
+          };
 
           // Discord has intentional sound-only notification paths (for example,
           // an incoming message in the selected channel while the document is
@@ -1602,7 +1797,7 @@ enum DiscordCSSComposer {
             bridge.serviceWorkerPollTimer = setTimeout(() => {
               bridge.serviceWorkerPollTimer = 0;
               pollServiceWorkerNotifications();
-            }, 1_000);
+            }, 500);
           };
           const pollServiceWorkerNotifications = async () => {
             try {
@@ -1641,10 +1836,47 @@ enum DiscordCSSComposer {
               }
             } catch (_) {
             } finally {
+              bridge.repair?.();
               scheduleServiceWorkerPoll();
             }
           };
 
+          const titleAttentionCount = () => {
+            const match = String(document.title || "").match(/^\\s*\\((\\d+)\\)/);
+            if (!match) return 0;
+            const count = Number(match[1]);
+            return Number.isSafeInteger(count) && count > 0 ? count : 0;
+          };
+          bridge.lastTitleAttentionCount = titleAttentionCount();
+          bridge.titleObserver = new MutationObserver(() => {
+            const titleElement = document.querySelector("title");
+            if (titleElement && titleElement !== bridge.titleElement) {
+              bridge.titleObserver.disconnect();
+              bridge.titleElement = titleElement;
+              bridge.titleObserver.observe(titleElement, {
+                childList: true,
+                subtree: true,
+                characterData: true
+              });
+            }
+            const nextCount = titleAttentionCount();
+            if (bridge.enabled && nextCount > bridge.lastTitleAttentionCount) {
+              postNotificationEvent();
+            }
+            bridge.lastTitleAttentionCount = nextCount;
+          });
+          bridge.titleElement = document.querySelector("title");
+          const titleObservationRoot = bridge.titleElement || document.head ||
+            document.documentElement;
+          if (titleObservationRoot) {
+            bridge.titleObserver.observe(titleObservationRoot, {
+              childList: true,
+              subtree: true,
+              characterData: true
+            });
+          }
+
+          bridge.repairTimer = setInterval(() => bridge.repair?.(), 250);
           pollServiceWorkerNotifications();
         })();
         """
@@ -1659,6 +1891,22 @@ enum DiscordCSSComposer {
           if (!runtime || typeof runtime.\(action) !== 'function') return false;
           runtime.\(action)();
           return true;
+        })();
+        """
+    }
+
+    static func incomingCallActionSource(_ action: String) -> String {
+        let method: String
+        switch action {
+        case "answer": method = "answerIncomingCall"
+        case "decline": method = "declineIncomingCall"
+        default: return "false;"
+        }
+        return """
+        (() => {
+          const runtime = window['\(runtimeKey)'];
+          if (!runtime || typeof runtime.\(method) !== 'function') return false;
+          return runtime.\(method)() === true;
         })();
         """
     }
@@ -1720,6 +1968,7 @@ enum DiscordCSSComposer {
         case .pink: "pink"
         case .green: "green"
         case .orange: "orange"
+        case .white: "white"
         }
     }
 
@@ -1732,21 +1981,15 @@ enum DiscordCSSComposer {
     }
 
     private static func accentValues(for accent: SideCordAccent) -> (color: String, rgb: String) {
-        switch accent {
-        case .automatic, .blurple: ("#5865f2", "88 101 242")
-        case .blue: ("#0a84ff", "10 132 255")
-        case .purple: ("#af52de", "175 82 222")
-        case .pink: ("#ff2d55", "255 45 85")
-        case .green: ("#30d158", "48 209 88")
-        case .orange: ("#ff9f0a", "255 159 10")
-        }
+        let descriptor = accent.colorDescriptor
+        return (descriptor.cssHex, descriptor.cssRGB)
     }
 
     private static func decimalString(_ value: Double) -> String {
         String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), value)
     }
 
-    private static func javascriptLiteral<Value: Encodable>(
+    static func javascriptLiteral<Value: Encodable>(
         _ value: Value,
         fallback: String
     ) -> String {
