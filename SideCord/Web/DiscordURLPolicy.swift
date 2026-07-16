@@ -25,6 +25,18 @@ enum DiscordDownloadPolicy {
     }
 }
 
+enum DiscordJavaScriptDialogPolicy {
+    static func allowsConfirmation(
+        scheme: String,
+        host: String,
+        isMainFrame: Bool
+    ) -> Bool {
+        isMainFrame
+            && scheme.lowercased() == "https"
+            && DiscordURLPolicy.isDiscordHost(host)
+    }
+}
+
 /// Pure URL classification used by the WebKit delegates and unit tests.
 enum DiscordURLPolicy {
     private static let allowedDomains = ["discord.com", "discordapp.com"]

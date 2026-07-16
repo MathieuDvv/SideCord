@@ -4,11 +4,36 @@ struct SidebarRootView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var webController: DiscordWebController
     @ObservedObject var panelController: PanelController
+    @ObservedObject var pluginRuntime: PluginWebPanelRuntime
     let onOpenSettings: () -> Void
 
     var body: some View {
-        discordContent
-        .background(Color(nsColor: .windowBackgroundColor))
+        GeometryReader { geometry in
+            let _ = pluginRuntime.preferenceRevision
+            let layout = pluginRuntime.resolvedLayout(
+                totalHeight: Double(geometry.size.height)
+            )
+
+            VStack(spacing: layout.map { CGFloat($0.gap) } ?? 0) {
+                discordContent
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: layout.map { CGFloat($0.discordHeight) },
+                        maxHeight: .infinity
+                    )
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .clipShape(.rect(cornerRadius: 16))
+                    .shadow(color: .black.opacity(0.2), radius: 9, y: 3)
+
+                if let controller = pluginRuntime.activeBottomPanel,
+                   let layout {
+                    PluginWebPanelView(controller: controller)
+                        .frame(height: CGFloat(layout.panelHeight))
+                        .clipShape(.rect(cornerRadius: 16))
+                        .shadow(color: .black.opacity(0.2), radius: 9, y: 3)
+                }
+            }
+        }
         .preferredColorScheme(preferredColorScheme)
     }
 

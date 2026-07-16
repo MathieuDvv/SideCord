@@ -132,6 +132,7 @@ final class DiscordWebController: NSObject, ObservableObject {
 
     private let settings: AppSettings
     private let pluginManager: SideCordPluginManager
+    private let pluginRuntime: PluginWebPanelRuntime
     private let compactPresetCSS: String
     private let layoutModifiersCSS: String
     private let visualThemesCSS: String
@@ -157,10 +158,12 @@ final class DiscordWebController: NSObject, ObservableObject {
     init(
         settings: AppSettings,
         pluginManager: SideCordPluginManager,
+        pluginRuntime: PluginWebPanelRuntime,
         resourceBundle: Bundle = .main
     ) {
         self.settings = settings
         self.pluginManager = pluginManager
+        self.pluginRuntime = pluginRuntime
         compactPresetCSS = Self.loadBundledCSS(named: "compact", from: resourceBundle)
         layoutModifiersCSS = Self.loadBundledCSS(named: "layout-mods", from: resourceBundle)
         visualThemesCSS = Self.loadBundledCSS(named: "visual-themes", from: resourceBundle)
@@ -348,6 +351,12 @@ final class DiscordWebController: NSObject, ObservableObject {
         .sink { [weak self] _ in self?.refreshCSS() }
         .store(in: &settingsCancellables)
 
+        pluginRuntime.$preferenceRevision
+            .dropFirst()
+            .debounce(for: .milliseconds(40), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshCSS() }
+            .store(in: &settingsCancellables)
+
         settings.objectWillChange
             .debounce(for: .milliseconds(90), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.refreshCSS() }
@@ -480,11 +489,40 @@ final class DiscordWebController: NSObject, ObservableObject {
             pluginsInstalled: pluginManager.installed.count,
             pluginsEnabled: pluginManager.enabledIdentifiers.count,
             plugins: pluginManager.installed.map { plugin in
-                SideCordPluginSettingsSnapshot(
+                let webPanel = plugin.manifest.contributions.webPanels.first.map { panel in
+                    let heightBounds = PluginWebPanelLayout.heightBounds(
+                        manifestMinimum: panel.minimumHeight,
+                        manifestMaximum: panel.maximumHeight
+                    )
+                    return SideCordWebPanelSettingsSnapshot(
+                        identifier: panel.id,
+                        name: panel.name,
+                        allowedHosts: panel.allowedNavigationHosts,
+                        persistentWebsiteData: plugin.manifest.permissions.persistentWebsiteData,
+                        backgroundAudioRequested: plugin.manifest.permissions.backgroundAudio,
+                        backgroundAudioAllowed: pluginRuntime.isBackgroundAudioAllowed(
+                            pluginIdentifier: plugin.id,
+                            contributionIdentifier: panel.id
+                        ),
+                        visible: pluginRuntime.isVisible(
+                            pluginIdentifier: plugin.id,
+                            contributionIdentifier: panel.id
+                        ),
+                        height: pluginRuntime.requestedHeight(
+                            pluginIdentifier: plugin.id,
+                            panel: panel
+                        ),
+                        minimumHeight: heightBounds.lowerBound,
+                        maximumHeight: heightBounds.upperBound,
+                        userResizable: panel.userResizable ?? false
+                    )
+                }
+                return SideCordPluginSettingsSnapshot(
                     identifier: plugin.id,
                     name: plugin.manifest.name,
                     version: plugin.manifest.version,
-                    enabled: pluginManager.isEnabled(plugin)
+                    enabled: pluginManager.isEnabled(plugin),
+                    webPanel: webPanel
                 )
             }
         )
@@ -510,22 +548,114 @@ final class DiscordWebController: NSObject, ObservableObject {
                   let value = payload["value"] as? NSNumber,
                   CFGetTypeID(value) == CFBooleanGetTypeID()
             else { return }
+            if value.boolValue {
+                pluginRuntime.approveRequestedPermissions(identifier: identifier)
+            }
             pluginManager.setEnabled(value.boolValue, identifier: identifier)
             refreshCSS()
+        case "setPluginPanelVisible":
+            guard let (identifier, panelIdentifier, value) = webPanelBooleanAction(payload)
+            else { return }
+            pluginRuntime.setVisible(
+                value,
+                pluginIdentifier: identifier,
+                contributionIdentifier: panelIdentifier
+            )
+        case "setPluginPanelBackgroundAudio":
+            guard let (identifier, panelIdentifier, value) = webPanelBooleanAction(payload)
+            else { return }
+            pluginRuntime.setBackgroundAudioAllowed(
+                value,
+                pluginIdentifier: identifier,
+                contributionIdentifier: panelIdentifier
+            )
+        case "setPluginPanelHeight":
+            guard let identifier = payload["identifier"] as? String,
+                  let panelIdentifier = payload["panelIdentifier"] as? String,
+                  let value = payload["value"] as? NSNumber,
+                  value.doubleValue.isFinite,
+                  let panel = pluginManager.installed.first(where: { $0.id == identifier })?
+                    .manifest.contributions.webPanels.first(where: { $0.id == panelIdentifier })
+            else { return }
+            pluginRuntime.setRequestedHeight(
+                value.doubleValue,
+                pluginIdentifier: identifier,
+                panel: panel
+            )
+        case "reloadPluginPanel":
+            guard let (identifier, panelIdentifier) = webPanelIdentifiers(payload) else { return }
+            pluginRuntime.reload(
+                pluginIdentifier: identifier,
+                contributionIdentifier: panelIdentifier
+            )
+        case "openPluginPanel":
+            guard let (identifier, panelIdentifier) = webPanelIdentifiers(payload) else { return }
+            pluginRuntime.openInBrowser(
+                pluginIdentifier: identifier,
+                contributionIdentifier: panelIdentifier
+            )
+        case "clearPluginPanelData":
+            guard let (identifier, panelIdentifier) = webPanelIdentifiers(payload) else { return }
+            Task { [weak self] in
+                await self?.pluginRuntime.clearWebsiteData(
+                    pluginIdentifier: identifier,
+                    contributionIdentifier: panelIdentifier
+                )
+            }
         case "removePlugin":
             guard let identifier = payload["identifier"] as? String,
                   identifier.count <= 128
             else { return }
             do {
+                pluginRuntime.prepareForUninstall(identifier: identifier)
                 try pluginManager.uninstall(identifier: identifier)
                 downloadError = nil
                 refreshCSS()
             } catch {
                 downloadError = "Couldn’t remove plugin: \(error.localizedDescription)"
             }
+        case "removePluginAndData":
+            guard let (identifier, panelIdentifier) = webPanelIdentifiers(payload) else { return }
+            pluginRuntime.prepareForUninstall(identifier: identifier)
+            do {
+                try pluginManager.uninstall(identifier: identifier)
+                downloadError = nil
+                refreshCSS()
+                Task { [weak self] in
+                    do {
+                        try await self?.pluginRuntime.removeWebsiteData(
+                            pluginIdentifier: identifier,
+                            contributionIdentifier: panelIdentifier
+                        )
+                    } catch {
+                        self?.downloadError = "The plugin was removed, but its website data couldn’t be deleted: \(error.localizedDescription)"
+                    }
+                }
+            } catch {
+                downloadError = "Couldn’t remove plugin: \(error.localizedDescription)"
+            }
         default:
             return
         }
+    }
+
+    private func webPanelIdentifiers(_ payload: [String: Any]) -> (String, String)? {
+        guard let identifier = payload["identifier"] as? String,
+              identifier.count <= 128,
+              let panelIdentifier = payload["panelIdentifier"] as? String,
+              panelIdentifier.count <= 80
+        else { return nil }
+        return (identifier, panelIdentifier)
+    }
+
+    private func webPanelBooleanAction(
+        _ payload: [String: Any]
+    ) -> (String, String, Bool)? {
+        guard let (identifier, panelIdentifier) = webPanelIdentifiers(payload),
+              let value = payload["value"] as? NSNumber,
+              CFGetTypeID(value) == CFBooleanGetTypeID()
+        else { return nil }
+        return (identifier, panelIdentifier, value.boolValue)
     }
 
     private func choosePluginForInstallation() {
@@ -1001,6 +1131,40 @@ extension DiscordWebController: WKNavigationDelegate {
 }
 
 extension DiscordWebController: WKUIDelegate {
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping @MainActor @Sendable (Bool) -> Void
+    ) {
+        let origin = frame.securityOrigin
+        guard DiscordJavaScriptDialogPolicy.allowsConfirmation(
+            scheme: origin.protocol,
+            host: origin.host,
+            isMainFrame: frame.isMainFrame
+        ) else {
+            completionHandler(false)
+            return
+        }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Confirm SideCord action"
+        alert.informativeText = String(message.prefix(800))
+        alert.addButton(withTitle: "Continue")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+
+        let complete: (NSApplication.ModalResponse) -> Void = { response in
+            completionHandler(response == .alertFirstButtonReturn)
+        }
+        if let hostWindow = webView.window {
+            alert.beginSheetModal(for: hostWindow, completionHandler: complete)
+        } else {
+            complete(alert.runModal())
+        }
+    }
+
     func webView(
         _ webView: WKWebView,
         createWebViewWith configuration: WKWebViewConfiguration,

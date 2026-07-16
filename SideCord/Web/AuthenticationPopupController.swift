@@ -42,9 +42,14 @@ final class AuthenticationPopupController: NSObject {
     let windowController: NSWindowController
     var onClose: (() -> Void)?
 
+    private let allowedHosts: Set<String>?
     private var hasNotifiedClose = false
 
-    init(configuration: WKWebViewConfiguration) {
+    init(
+        configuration: WKWebViewConfiguration,
+        allowedHosts: Set<String>? = nil
+    ) {
+        self.allowedHosts = allowedHosts
         DiscordWebConfiguration.applySafariCompatibility(to: configuration)
         webView = WKWebView(frame: .zero, configuration: configuration)
 
@@ -93,6 +98,11 @@ extension AuthenticationPopupController: WKNavigationDelegate {
         decidePolicyFor navigationAction: WKNavigationAction,
         decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
     ) {
+        if navigationAction.shouldPerformDownload {
+            decisionHandler(.cancel)
+            return
+        }
+
         if navigationAction.targetFrame?.isMainFrame == false {
             decisionHandler(.allow)
             return
@@ -103,7 +113,26 @@ extension AuthenticationPopupController: WKNavigationDelegate {
             return
         }
         let scheme = url.scheme?.lowercased()
-        decisionHandler(scheme == "https" || scheme == "about" ? .allow : .cancel)
+        if scheme == "about" {
+            decisionHandler(.allow)
+            return
+        }
+        guard scheme == "https",
+              let host = url.host(percentEncoded: false)?.lowercased(),
+              allowedHosts?.contains(host) ?? true
+        else {
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationResponse: WKNavigationResponse,
+        decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void
+    ) {
+        decisionHandler(navigationResponse.canShowMIMEType ? .allow : .cancel)
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {

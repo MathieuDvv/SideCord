@@ -1,5 +1,6 @@
 import CryptoKit
 import Combine
+import Darwin
 import Foundation
 
 enum SideCordPluginCapability: String, Codable, CaseIterable, Sendable {
@@ -7,6 +8,168 @@ enum SideCordPluginCapability: String, Codable, CaseIterable, Sendable {
     case layout
     case styleSheet
     case command
+    case webPanel
+}
+
+enum SideCordPluginPanelPlacement: String, Codable, CaseIterable, Sendable {
+    case bottom
+}
+
+enum SideCordPluginDocumentLayoutSelection: String, Codable, CaseIterable, Sendable {
+    case first
+    case firstVisible
+}
+
+enum SideCordPluginDocumentLayoutSlotStrategy: String, Codable, CaseIterable, Sendable {
+    case move
+    case preserve
+}
+
+struct SideCordPluginDocumentLayoutSlot: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let selectors: [String]
+    let selection: SideCordPluginDocumentLayoutSelection
+    let strategy: SideCordPluginDocumentLayoutSlotStrategy
+
+    init(
+        id: String,
+        selectors: [String],
+        selection: SideCordPluginDocumentLayoutSelection = .first,
+        strategy: SideCordPluginDocumentLayoutSlotStrategy = .move
+    ) {
+        self.id = id
+        self.selectors = selectors
+        self.selection = selection
+        self.strategy = strategy
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, selectors, selection, strategy
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        selectors = try container.decode([String].self, forKey: .selectors)
+        selection = try container.decodeIfPresent(
+            SideCordPluginDocumentLayoutSelection.self,
+            forKey: .selection
+        ) ?? .first
+        strategy = try container.decodeIfPresent(
+            SideCordPluginDocumentLayoutSlotStrategy.self,
+            forKey: .strategy
+        ) ?? .move
+    }
+}
+
+struct SideCordPluginDocumentLayout: Codable, Equatable, Identifiable, Sendable {
+    let host: String
+    let mountSelector: String
+    let slots: [SideCordPluginDocumentLayoutSlot]
+
+    var id: String { host }
+}
+
+struct SideCordPluginWebPanel: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let name: String
+    let placement: SideCordPluginPanelPlacement
+    let initialURL: URL
+    let allowedNavigationHosts: [String]
+    let preferredHeight: Double
+    let minimumHeight: Double?
+    let maximumHeight: Double?
+    let userResizable: Bool?
+    let customCSS: String?
+    let documentLayouts: [SideCordPluginDocumentLayout]
+
+    init(
+        id: String,
+        name: String,
+        placement: SideCordPluginPanelPlacement,
+        initialURL: URL,
+        allowedNavigationHosts: [String],
+        preferredHeight: Double,
+        minimumHeight: Double?,
+        maximumHeight: Double?,
+        userResizable: Bool?,
+        customCSS: String?,
+        documentLayouts: [SideCordPluginDocumentLayout] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.placement = placement
+        self.initialURL = initialURL
+        self.allowedNavigationHosts = allowedNavigationHosts
+        self.preferredHeight = preferredHeight
+        self.minimumHeight = minimumHeight
+        self.maximumHeight = maximumHeight
+        self.userResizable = userResizable
+        self.customCSS = customCSS
+        self.documentLayouts = documentLayouts
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, placement, initialURL, allowedNavigationHosts
+        case preferredHeight, minimumHeight, maximumHeight, userResizable
+        case customCSS, documentLayouts
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        placement = try container.decode(SideCordPluginPanelPlacement.self, forKey: .placement)
+        initialURL = try container.decode(URL.self, forKey: .initialURL)
+        allowedNavigationHosts = try container.decode([String].self, forKey: .allowedNavigationHosts)
+        preferredHeight = try container.decode(Double.self, forKey: .preferredHeight)
+        minimumHeight = try container.decodeIfPresent(Double.self, forKey: .minimumHeight)
+        maximumHeight = try container.decodeIfPresent(Double.self, forKey: .maximumHeight)
+        userResizable = try container.decodeIfPresent(Bool.self, forKey: .userResizable)
+        customCSS = try container.decodeIfPresent(String.self, forKey: .customCSS)
+        documentLayouts = try container.decodeIfPresent(
+            [SideCordPluginDocumentLayout].self,
+            forKey: .documentLayouts
+        ) ?? []
+    }
+}
+
+struct SideCordPluginPermissions: Codable, Equatable, Sendable {
+    var networkHosts: [String]
+    var persistentWebsiteData: Bool
+    var backgroundAudio: Bool
+
+    init(
+        networkHosts: [String] = [],
+        persistentWebsiteData: Bool = false,
+        backgroundAudio: Bool = false
+    ) {
+        self.networkHosts = networkHosts
+        self.persistentWebsiteData = persistentWebsiteData
+        self.backgroundAudio = backgroundAudio
+    }
+
+    static let none = SideCordPluginPermissions()
+
+    private enum CodingKeys: String, CodingKey {
+        case networkHosts, persistentWebsiteData, backgroundAudio
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        networkHosts = try container.decodeIfPresent(
+            [String].self,
+            forKey: .networkHosts
+        ) ?? []
+        persistentWebsiteData = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .persistentWebsiteData
+        ) ?? false
+        backgroundAudio = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .backgroundAudio
+        ) ?? false
+    }
 }
 
 struct SideCordPluginTheme: Codable, Equatable, Identifiable, Sendable {
@@ -53,21 +216,24 @@ struct SideCordPluginContributions: Codable, Equatable, Sendable {
     var layouts: [SideCordPluginLayout]
     var styleSheets: [SideCordPluginStyleSheet]
     var commands: [SideCordPluginCommand]
+    var webPanels: [SideCordPluginWebPanel]
 
     init(
         themes: [SideCordPluginTheme] = [],
         layouts: [SideCordPluginLayout] = [],
         styleSheets: [SideCordPluginStyleSheet] = [],
-        commands: [SideCordPluginCommand] = []
+        commands: [SideCordPluginCommand] = [],
+        webPanels: [SideCordPluginWebPanel] = []
     ) {
         self.themes = themes
         self.layouts = layouts
         self.styleSheets = styleSheets
         self.commands = commands
+        self.webPanels = webPanels
     }
 
     private enum CodingKeys: String, CodingKey {
-        case themes, layouts, styleSheets, commands
+        case themes, layouts, styleSheets, commands, webPanels
     }
 
     init(from decoder: Decoder) throws {
@@ -82,6 +248,10 @@ struct SideCordPluginContributions: Codable, Equatable, Sendable {
             [SideCordPluginCommand].self,
             forKey: .commands
         ) ?? []
+        webPanels = try container.decodeIfPresent(
+            [SideCordPluginWebPanel].self,
+            forKey: .webPanels
+        ) ?? []
     }
 }
 
@@ -94,9 +264,65 @@ struct SideCordPluginManifest: Codable, Equatable, Identifiable, Sendable {
     let description: String
     let minimumSideCordVersion: String
     let capabilities: [SideCordPluginCapability]
+    let permissions: SideCordPluginPermissions
     let contributions: SideCordPluginContributions
 
     var id: String { identifier }
+
+    init(
+        schemaVersion: Int,
+        identifier: String,
+        name: String,
+        version: String,
+        author: String,
+        description: String,
+        minimumSideCordVersion: String,
+        capabilities: [SideCordPluginCapability],
+        permissions: SideCordPluginPermissions = .none,
+        contributions: SideCordPluginContributions
+    ) {
+        self.schemaVersion = schemaVersion
+        self.identifier = identifier
+        self.name = name
+        self.version = version
+        self.author = author
+        self.description = description
+        self.minimumSideCordVersion = minimumSideCordVersion
+        self.capabilities = capabilities
+        self.permissions = permissions
+        self.contributions = contributions
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, identifier, name, version, author, description
+        case minimumSideCordVersion, capabilities, permissions, contributions
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        identifier = try container.decode(String.self, forKey: .identifier)
+        name = try container.decode(String.self, forKey: .name)
+        version = try container.decode(String.self, forKey: .version)
+        author = try container.decode(String.self, forKey: .author)
+        description = try container.decode(String.self, forKey: .description)
+        minimumSideCordVersion = try container.decode(
+            String.self,
+            forKey: .minimumSideCordVersion
+        )
+        capabilities = try container.decode(
+            [SideCordPluginCapability].self,
+            forKey: .capabilities
+        )
+        permissions = try container.decodeIfPresent(
+            SideCordPluginPermissions.self,
+            forKey: .permissions
+        ) ?? .none
+        contributions = try container.decode(
+            SideCordPluginContributions.self,
+            forKey: .contributions
+        )
+    }
 }
 
 struct SideCordPluginPackage: Codable, Equatable, Sendable {
@@ -247,6 +473,11 @@ enum SideCordCatalogVerifier {
 @MainActor
 final class SideCordPluginManager: ObservableObject {
     static let maximumPackageSize = 1_000_000
+    static let maximumWebPanelCSSSize = 65_536
+    static let maximumWebPanelHosts = 16
+    static let maximumDocumentLayoutSlots = 8
+    static let maximumDocumentLayoutSelectors = 8
+    nonisolated static let maximumDocumentLayoutSelectorLength = 256
 
     @Published private(set) var installed: [InstalledSideCordPlugin] = []
     @Published private(set) var enabledIdentifiers: Set<String> = []
@@ -291,7 +522,18 @@ final class SideCordPluginManager: ObservableObject {
 
     func setEnabled(_ enabled: Bool, identifier: String) {
         guard installed.contains(where: { $0.id == identifier }) else { return }
-        if enabled { enabledIdentifiers.insert(identifier) }
+        if enabled {
+            if installed.first(where: { $0.id == identifier })?
+                .manifest.contributions.webPanels.isEmpty == false {
+                let otherWebPanelPluginIDs = installed.compactMap { plugin in
+                    plugin.id != identifier && !plugin.manifest.contributions.webPanels.isEmpty
+                        ? plugin.id
+                        : nil
+                }
+                enabledIdentifiers.subtract(otherWebPanelPluginIDs)
+            }
+            enabledIdentifiers.insert(identifier)
+        }
         else { enabledIdentifiers.remove(identifier) }
         persistEnabledIdentifiers()
         objectWillChange.send()
@@ -439,7 +681,9 @@ final class SideCordPluginManager: ObservableObject {
 
     func validate(_ package: SideCordPluginPackage) throws {
         let manifest = package.manifest
-        guard manifest.schemaVersion == 1 else { throw SideCordPluginError.unsupportedSchema }
+        guard (1 ... 3).contains(manifest.schemaVersion) else {
+            throw SideCordPluginError.unsupportedSchema
+        }
         guard manifest.identifier.range(
             of: #"^[a-z0-9]+(?:[.-][a-z0-9]+)+$"#,
             options: .regularExpression
@@ -464,6 +708,7 @@ final class SideCordPluginManager: ObservableObject {
             + manifest.contributions.layouts.map(\.id)
             + manifest.contributions.styleSheets.map(\.id)
             + manifest.contributions.commands.map(\.id)
+            + manifest.contributions.webPanels.map(\.id)
         guard Set(contributionIDs).count == contributionIDs.count,
               contributionIDs.allSatisfy({ !$0.isEmpty && $0.count <= 80 })
         else { throw SideCordPluginError.invalidManifest("Contribution identifiers must be unique.") }
@@ -475,6 +720,7 @@ final class SideCordPluginManager: ObservableObject {
             actualCapabilities.insert(.styleSheet)
         }
         if !manifest.contributions.commands.isEmpty { actualCapabilities.insert(.command) }
+        if !manifest.contributions.webPanels.isEmpty { actualCapabilities.insert(.webPanel) }
         guard actualCapabilities == Set(manifest.capabilities) else {
             throw SideCordPluginError.invalidManifest(
                 "Declared capabilities must exactly match the included contributions."
@@ -484,6 +730,218 @@ final class SideCordPluginManager: ObservableObject {
             if DiscordCSSComposer.validationError(for: sheet.css) != nil {
                 throw SideCordPluginError.unsafeStyleSheet(sheet.name)
             }
+        }
+        try validateWebPanels(in: manifest)
+    }
+
+    private func validateWebPanels(in manifest: SideCordPluginManifest) throws {
+        let panels = manifest.contributions.webPanels
+        if manifest.schemaVersion == 1 {
+            guard panels.isEmpty,
+                  !manifest.capabilities.contains(.webPanel),
+                  manifest.permissions == .none
+            else { throw SideCordPluginError.unsupportedSchema }
+            return
+        }
+
+        guard panels.count <= 1 else {
+            throw SideCordPluginError.invalidManifest(
+                "A plugin can contribute at most one web panel."
+            )
+        }
+
+        let permissionHosts = manifest.permissions.networkHosts
+        guard permissionHosts.count <= Self.maximumWebPanelHosts,
+              Set(permissionHosts).count == permissionHosts.count,
+              permissionHosts.allSatisfy(Self.isValidExactHost)
+        else {
+            throw SideCordPluginError.invalidManifest(
+                "Network permissions must contain at most 16 unique, exact hostnames."
+            )
+        }
+
+        guard !panels.isEmpty || manifest.permissions == .none else {
+            throw SideCordPluginError.invalidManifest(
+                "Web-panel permissions require a web-panel contribution."
+            )
+        }
+
+        for panel in panels {
+            guard !panel.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  panel.name.count <= 80,
+                  panel.placement == .bottom
+            else {
+                throw SideCordPluginError.invalidManifest(
+                    "Web-panel names and placements must be valid."
+                )
+            }
+
+            guard Self.isSafeWebPanelURL(panel.initialURL),
+                  let initialHost = Self.normalizedExactHost(panel.initialURL)
+            else {
+                throw SideCordPluginError.invalidManifest(
+                    "Web panels require an HTTPS initial URL without credentials, ports, IP addresses, or custom schemes."
+                )
+            }
+
+            let allowedHosts = panel.allowedNavigationHosts
+            guard !allowedHosts.isEmpty,
+                  allowedHosts.count <= Self.maximumWebPanelHosts,
+                  Set(allowedHosts).count == allowedHosts.count,
+                  allowedHosts.allSatisfy(Self.isValidExactHost),
+                  allowedHosts.contains(initialHost),
+                  allowedHosts.allSatisfy(permissionHosts.contains)
+            else {
+                throw SideCordPluginError.invalidManifest(
+                    "Every allowed navigation host must be exact, include the initial host, and appear in network permissions."
+                )
+            }
+
+            let heights = [panel.preferredHeight, panel.minimumHeight, panel.maximumHeight]
+                .compactMap { $0 }
+            guard heights.allSatisfy({ $0.isFinite && $0 > 0 }),
+                  panel.minimumHeight.map({ minimum in
+                      panel.maximumHeight.map { minimum <= $0 } ?? true
+                  }) ?? true
+            else {
+                throw SideCordPluginError.invalidManifest(
+                    "Web-panel heights must be positive, finite, and ordered."
+                )
+            }
+
+            if let css = panel.customCSS {
+                guard css.utf8.count <= Self.maximumWebPanelCSSSize,
+                      DiscordCSSComposer.validationError(for: css) == nil
+                else { throw SideCordPluginError.unsafeStyleSheet(panel.name) }
+            }
+
+            try validateDocumentLayouts(
+                panel.documentLayouts,
+                schemaVersion: manifest.schemaVersion,
+                allowedHosts: allowedHosts
+            )
+        }
+    }
+
+    private func validateDocumentLayouts(
+        _ layouts: [SideCordPluginDocumentLayout],
+        schemaVersion: Int,
+        allowedHosts: [String]
+    ) throws {
+        guard layouts.isEmpty || schemaVersion >= 3 else {
+            throw SideCordPluginError.unsupportedSchema
+        }
+        guard layouts.count <= Self.maximumWebPanelHosts,
+              Set(layouts.map(\.host)).count == layouts.count
+        else {
+            throw SideCordPluginError.invalidManifest(
+                "Document layouts must use unique declared hosts."
+            )
+        }
+
+        for layout in layouts {
+            guard allowedHosts.contains(layout.host),
+                  Self.isConservativeDocumentSelector(layout.mountSelector),
+                  !layout.slots.isEmpty,
+                  layout.slots.count <= Self.maximumDocumentLayoutSlots,
+                  Set(layout.slots.map(\.id)).count == layout.slots.count
+            else {
+                throw SideCordPluginError.invalidManifest(
+                    "Document layouts contain an invalid host, mount selector, or slot list."
+                )
+            }
+
+            for slot in layout.slots {
+                guard slot.id.range(
+                    of: #"^[a-z][a-z0-9-]{0,39}$"#,
+                    options: .regularExpression
+                ) != nil,
+                !slot.selectors.isEmpty,
+                slot.selectors.count <= Self.maximumDocumentLayoutSelectors,
+                Set(slot.selectors).count == slot.selectors.count,
+                slot.selectors.allSatisfy(Self.isConservativeDocumentSelector)
+                else {
+                    throw SideCordPluginError.invalidManifest(
+                        "Document-layout slots require unique identifiers and safe selectors."
+                    )
+                }
+            }
+        }
+    }
+
+    nonisolated static func isConservativeDocumentSelector(_ selector: String) -> Bool {
+        guard !selector.isEmpty,
+              selector.count <= maximumDocumentLayoutSelectorLength,
+              selector == selector.trimmingCharacters(in: .whitespacesAndNewlines),
+              !selector.contains("  "),
+              selector.range(
+                of: #"^[A-Za-z0-9_.#\[\]='\" -]+(?: > [A-Za-z0-9_.#\[\]='\" -]+)*$"#,
+                options: .regularExpression
+              ) != nil
+        else { return false }
+
+        var bracketDepth = 0
+        var quote: Character?
+        for character in selector {
+            if let activeQuote = quote {
+                if character == activeQuote { quote = nil }
+                continue
+            }
+            if character == "\"" || character == "'" {
+                quote = character
+            } else if character == "[" {
+                bracketDepth += 1
+            } else if character == "]" {
+                bracketDepth -= 1
+                if bracketDepth < 0 { return false }
+            }
+        }
+        return quote == nil && bracketDepth == 0
+    }
+
+    nonisolated static func isSafeWebPanelURL(_ url: URL) -> Bool {
+        guard url.scheme == "https",
+              url.user == nil,
+              url.password == nil,
+              url.port == nil,
+              normalizedExactHost(url) != nil
+        else { return false }
+        return true
+    }
+
+    nonisolated static func normalizedExactHost(_ url: URL) -> String? {
+        guard let host = url.host(percentEncoded: false), isValidExactHost(host) else {
+            return nil
+        }
+        return host
+    }
+
+    nonisolated static func isValidExactHost(_ host: String) -> Bool {
+        guard !host.isEmpty,
+              host.count <= 253,
+              host == host.lowercased(),
+              !host.hasPrefix("."),
+              !host.hasSuffix("."),
+              !host.contains("*"),
+              !isIPAddress(host)
+        else { return false }
+
+        let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard labels.count >= 2 else { return false }
+        return labels.allSatisfy { label in
+            label.range(
+                of: #"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"#,
+                options: .regularExpression
+            ) != nil
+        }
+    }
+
+    nonisolated private static func isIPAddress(_ host: String) -> Bool {
+        var ipv4 = in_addr()
+        var ipv6 = in6_addr()
+        return host.withCString { pointer in
+            inet_pton(AF_INET, pointer, &ipv4) == 1
+                || inet_pton(AF_INET6, pointer, &ipv6) == 1
         }
     }
 
@@ -530,7 +988,7 @@ final class SideCordPluginManager: ObservableObject {
 
     private static var currentAppVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-            ?? "2.1.0"
+            ?? "2.4.0"
     }
 
     private static func semanticVersion(_ value: String) -> [Int]? {

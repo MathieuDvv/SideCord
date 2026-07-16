@@ -61,7 +61,7 @@ SideCord's controls live inside Discord's own settings screen under a native-sty
 - Settings integrated into Discord's native navigation, plus floating-rail controls in the top pill
 - System Glass, Discord, OLED, and Soft palettes with automatic or forced appearance
 - White and independent glow colors, three glow strengths, and native incoming-call controls
-- Declarative JSON plugins for reviewed themes, layouts, safe styles, and allow-listed commands
+- Declarative JSON plugins for reviewed themes, layouts, safe styles, allow-listed commands, and isolated host-managed web panels
 - Signed marketplace catalog and package-hash verification when configured by a release build
 - Compact density, essential composer controls, and conservative local custom CSS
 - Native handling for attachments, downloads, camera, microphone, login popups, and QR login
@@ -132,6 +132,6 @@ Discord can change its web interface or embedded-browser support at any time, so
 
 ## Plugins
 
-SideCord plugins are declarative JSON packages, not executable extensions. They can contribute validated styles, theme and layout recipes, and commands assembled from SideCord's built-in actions. They cannot run JavaScript or native code, inspect Discord content, access files, or make network requests. See [the plugin format and marketplace security model](docs/PLUGINS.md).
+SideCord plugins are declarative JSON packages, not executable extensions. They can contribute validated styles, theme and layout recipes, commands assembled from SideCord's built-in actions, and schema v2 web panels. A web panel may load declared HTTPS sites in a SideCord-owned browser profile isolated from Discord; the package still cannot supply JavaScript or native code and receives no native bridge. See [the plugin format and marketplace security model](docs/PLUGINS.md).
 
 <p align="center"><sub>SideCord is independent software and is not affiliated with Discord Inc.</sub></p>

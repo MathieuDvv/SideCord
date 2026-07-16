@@ -23,10 +23,23 @@ visible call dialog; if either control cannot be identified unambiguously,
 SideCord opens Discord instead of clicking an uncertain element.
 
 Declarative plugin packages are stored in SideCord's sandboxed Application
-Support container. Plugins cannot execute code, inspect Discord content, access
-files, or initiate network requests. Release-configured marketplace catalogs are
-verified with an embedded Ed25519 public key, and downloaded packages are checked
-against the catalog's SHA-256 hash before installation. Local packages require
-an explicit warning and are still schema- and capability-validated.
+Support container. Plugins cannot execute native code or plugin-supplied
+JavaScript, inspect Discord content, or access files. A schema v2 web-panel
+plugin may ask SideCord to load a remote website. SideCord owns that `WKWebView`,
+shows every declared hostname before enabling, restricts top-level navigation to
+exact declared HTTPS hosts, exposes no native message bridge, and rejects
+downloads. The remote website's own JavaScript executes inside WebKit.
+
+Each web panel uses a browser profile isolated from Discord and every other
+plugin. When persistent website data is requested, its cookies, cache, and local
+storage remain across updates and normal disable/uninstall operations. Users can
+clear that data from plugin settings or explicitly delete it while uninstalling.
+Background audio requires a declared permission and user approval; otherwise
+SideCord pauses panel media when the sidebar retracts.
+
+Release-configured marketplace catalogs are verified with an embedded Ed25519
+public key, and downloaded packages are checked against the catalog's SHA-256
+hash before installation. Local packages require an explicit warning and are
+still schema-, capability-, permission-, hostname-, and CSS-validated.
 
 SideCord has no analytics or telemetry.

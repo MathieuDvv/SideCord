@@ -52,6 +52,258 @@ final class PluginManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testSchemaV1PackageWithoutPermissionsStillDecodesAndInstalls() throws {
+        let data = Data(
+            """
+            {
+              "manifest": {
+                "schemaVersion": 1,
+                "identifier": "com.sidecord.legacy",
+                "name": "Legacy",
+                "version": "1.0.0",
+                "author": "SideCord Tests",
+                "description": "A schema v1 package.",
+                "minimumSideCordVersion": "2.0.0",
+                "capabilities": ["styleSheet"],
+                "contributions": {
+                  "styleSheets": [{
+                    "id": "legacy-css",
+                    "name": "Legacy CSS",
+                    "css": ".legacy { color: red; }"
+                  }]
+                }
+              }
+            }
+            """.utf8
+        )
+
+        let manager = makeManager()
+        let installed = try manager.install(data: data, source: .local)
+
+        XCTAssertEqual(installed.manifest.schemaVersion, 1)
+        XCTAssertEqual(installed.manifest.permissions, .none)
+        XCTAssertTrue(installed.manifest.contributions.webPanels.isEmpty)
+    }
+
+    @MainActor
+    func testSchemaV2WebPanelDecodesAndValidates() throws {
+        let data = Data(
+            """
+            {
+              "manifest": {
+                "schemaVersion": 2,
+                "identifier": "com.mathieudvv.youtube-music",
+                "name": "YouTube Music",
+                "version": "1.0.0",
+                "author": "MathieuDvv",
+                "description": "Adds a compact YouTube Music player below Discord.",
+                "minimumSideCordVersion": "2.3.0",
+                "capabilities": ["webPanel"],
+                "permissions": {
+                  "networkHosts": ["music.youtube.com", "accounts.google.com"],
+                  "persistentWebsiteData": true,
+                  "backgroundAudio": true
+                },
+                "contributions": {
+                  "webPanels": [{
+                    "id": "youtube-music-player",
+                    "name": "YouTube Music",
+                    "placement": "bottom",
+                    "initialURL": "https://music.youtube.com/",
+                    "allowedNavigationHosts": ["music.youtube.com", "accounts.google.com"],
+                    "preferredHeight": 190,
+                    "minimumHeight": 140,
+                    "maximumHeight": 300,
+                    "userResizable": true,
+                    "customCSS": "ytmusic-nav-bar { display: none !important; }"
+                  }]
+                }
+              }
+            }
+            """.utf8
+        )
+
+        let manager = makeManager()
+        let installed = try manager.install(data: data, source: .local)
+        let panel = try XCTUnwrap(installed.manifest.contributions.webPanels.first)
+
+        XCTAssertEqual(installed.manifest.schemaVersion, 2)
+        XCTAssertEqual(panel.id, "youtube-music-player")
+        XCTAssertEqual(panel.initialURL.absoluteString, "https://music.youtube.com/")
+        XCTAssertEqual(installed.manifest.permissions.networkHosts.count, 2)
+        XCTAssertTrue(installed.manifest.permissions.persistentWebsiteData)
+        XCTAssertTrue(installed.manifest.permissions.backgroundAudio)
+        XCTAssertTrue(panel.documentLayouts.isEmpty)
+    }
+
+    @MainActor
+    func testSchemaV3DocumentLayoutDecodesAndValidates() throws {
+        let manager = makeManager()
+        let package = webPanelPackage(
+            schemaVersion: 3,
+            documentLayouts: [
+                SideCordPluginDocumentLayout(
+                    host: "music.youtube.com",
+                    mountSelector: "ytmusic-app",
+                    slots: [
+                        SideCordPluginDocumentLayoutSlot(
+                            id: "content",
+                            selectors: ["ytmusic-browse-response", "ytmusic-search-page"],
+                            selection: .firstVisible
+                        ),
+                        SideCordPluginDocumentLayoutSlot(
+                            id: "player",
+                            selectors: ["ytmusic-player-bar"],
+                            strategy: .preserve
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let installed = try manager.install(data: encode(package), source: .local)
+        let layout = try XCTUnwrap(
+            installed.manifest.contributions.webPanels.first?.documentLayouts.first
+        )
+
+        XCTAssertEqual(installed.manifest.schemaVersion, 3)
+        XCTAssertEqual(layout.host, "music.youtube.com")
+        XCTAssertEqual(layout.slots.map(\.id), ["content", "player"])
+        XCTAssertEqual(layout.slots.first?.selection, .firstVisible)
+        XCTAssertEqual(layout.slots.first?.strategy, .move)
+        XCTAssertEqual(layout.slots.last?.strategy, .preserve)
+    }
+
+    @MainActor
+    func testWebPanelValidationRejectsUnsafeURLsHostsAndHeights() throws {
+        let manager = makeManager()
+        let invalidPackages = [
+            webPanelPackage(initialURL: "http://music.youtube.com/"),
+            webPanelPackage(initialURL: "https://user@music.youtube.com/"),
+            webPanelPackage(initialURL: "https://music.youtube.com:8443/"),
+            webPanelPackage(
+                initialURL: "https://127.0.0.1/",
+                allowedHosts: ["127.0.0.1"],
+                permissionHosts: ["127.0.0.1"]
+            ),
+            webPanelPackage(
+                allowedHosts: ["music.youtube.com", "*.google.com"],
+                permissionHosts: ["music.youtube.com", "*.google.com"]
+            ),
+            webPanelPackage(
+                allowedHosts: ["music.youtube.com", "accounts.google.com"],
+                permissionHosts: ["music.youtube.com"]
+            ),
+            webPanelPackage(preferredHeight: -1),
+            webPanelPackage(minimumHeight: 300, maximumHeight: 140)
+        ]
+
+        for package in invalidPackages {
+            XCTAssertThrowsError(try manager.validate(package), String(describing: package)) {
+                guard case SideCordPluginError.invalidManifest = $0 else {
+                    return XCTFail("Unexpected error: \($0)")
+                }
+            }
+        }
+    }
+
+    @MainActor
+    func testWebPanelValidationRejectsCapabilityPermissionAndCSSMismatches() throws {
+        let manager = makeManager()
+        let missingCapability = webPanelPackage(capabilities: [])
+        let schemaOne = webPanelPackage(schemaVersion: 1)
+        let permissionsWithoutPanel = SideCordPluginPackage(manifest: SideCordPluginManifest(
+            schemaVersion: 2,
+            identifier: "com.sidecord.permissions-only",
+            name: "Permissions Only",
+            version: "1.0.0",
+            author: "SideCord Tests",
+            description: "Invalid permissions.",
+            minimumSideCordVersion: "2.3.0",
+            capabilities: [],
+            permissions: SideCordPluginPermissions(networkHosts: ["example.com"]),
+            contributions: SideCordPluginContributions()
+        ))
+        let unsafeCSS = webPanelPackage(
+            customCSS: ".player { background: url(https://example.com/a.png); }"
+        )
+
+        XCTAssertThrowsError(try manager.validate(missingCapability))
+        XCTAssertThrowsError(try manager.validate(schemaOne)) { error in
+            XCTAssertEqual(error as? SideCordPluginError, .unsupportedSchema)
+        }
+        XCTAssertThrowsError(try manager.validate(permissionsWithoutPanel))
+        XCTAssertThrowsError(try manager.validate(unsafeCSS)) { error in
+            XCTAssertEqual(error as? SideCordPluginError, .unsafeStyleSheet("Web Panel"))
+        }
+    }
+
+    @MainActor
+    func testDocumentLayoutValidationRejectsOldSchemasHostsAndUnsafeSelectors() throws {
+        let manager = makeManager()
+        let validLayout = SideCordPluginDocumentLayout(
+            host: "music.youtube.com",
+            mountSelector: "ytmusic-app",
+            slots: [
+                SideCordPluginDocumentLayoutSlot(
+                    id: "player",
+                    selectors: ["ytmusic-player-bar"]
+                )
+            ]
+        )
+        let wrongHost = SideCordPluginDocumentLayout(
+            host: "accounts.google.com",
+            mountSelector: "ytmusic-app",
+            slots: validLayout.slots
+        )
+        let unsafeSelector = SideCordPluginDocumentLayout(
+            host: "music.youtube.com",
+            mountSelector: "ytmusic-app, script",
+            slots: validLayout.slots
+        )
+
+        XCTAssertThrowsError(try manager.validate(webPanelPackage(
+            schemaVersion: 2,
+            documentLayouts: [validLayout]
+        ))) { error in
+            XCTAssertEqual(error as? SideCordPluginError, .unsupportedSchema)
+        }
+        XCTAssertThrowsError(try manager.validate(webPanelPackage(
+            schemaVersion: 3,
+            documentLayouts: [wrongHost]
+        )))
+        XCTAssertThrowsError(try manager.validate(webPanelPackage(
+            schemaVersion: 3,
+            documentLayouts: [unsafeSelector]
+        )))
+        XCTAssertTrue(SideCordPluginManager.isConservativeDocumentSelector(
+            "ytmusic-app > ytmusic-nav-bar"
+        ))
+        XCTAssertFalse(SideCordPluginManager.isConservativeDocumentSelector(
+            "ytmusic-app:has(script)"
+        ))
+    }
+
+    @MainActor
+    func testOnlyOneWebPanelPluginCanBeEnabled() throws {
+        let manager = makeManager()
+        try manager.install(
+            data: encode(webPanelPackage(identifier: "com.sidecord.panel-one")),
+            source: .local
+        )
+        try manager.install(
+            data: encode(webPanelPackage(identifier: "com.sidecord.panel-two")),
+            source: .local
+        )
+
+        manager.setEnabled(true, identifier: "com.sidecord.panel-one")
+        XCTAssertEqual(manager.enabledIdentifiers, ["com.sidecord.panel-one"])
+
+        manager.setEnabled(true, identifier: "com.sidecord.panel-two")
+        XCTAssertEqual(manager.enabledIdentifiers, ["com.sidecord.panel-two"])
+    }
+
+    @MainActor
     func testPluginValidationRejectsCapabilitiesAndUnsafeCSS() throws {
         let manager = makeManager()
         var mismatched = package(version: "1.0.0", css: ".fixture { color: red; }")
@@ -140,6 +392,51 @@ final class PluginManagerTests: XCTestCase {
                     id: "fixture-css",
                     name: "Fixture CSS",
                     css: css
+                )
+            ])
+        ))
+    }
+
+    private func webPanelPackage(
+        schemaVersion: Int = 2,
+        identifier: String = "com.sidecord.web-panel",
+        initialURL: String = "https://music.youtube.com/",
+        allowedHosts: [String] = ["music.youtube.com"],
+        permissionHosts: [String] = ["music.youtube.com"],
+        preferredHeight: Double = 190,
+        minimumHeight: Double? = 140,
+        maximumHeight: Double? = 300,
+        customCSS: String? = ".fixture { color: red; }",
+        capabilities: [SideCordPluginCapability] = [.webPanel],
+        documentLayouts: [SideCordPluginDocumentLayout] = []
+    ) -> SideCordPluginPackage {
+        SideCordPluginPackage(manifest: SideCordPluginManifest(
+            schemaVersion: schemaVersion,
+            identifier: identifier,
+            name: "Web Panel Fixture",
+            version: "1.0.0",
+            author: "SideCord Tests",
+            description: "A declarative web-panel package.",
+            minimumSideCordVersion: "2.3.0",
+            capabilities: capabilities,
+            permissions: SideCordPluginPermissions(
+                networkHosts: permissionHosts,
+                persistentWebsiteData: true,
+                backgroundAudio: true
+            ),
+            contributions: SideCordPluginContributions(webPanels: [
+                SideCordPluginWebPanel(
+                    id: "web-panel",
+                    name: "Web Panel",
+                    placement: .bottom,
+                    initialURL: URL(string: initialURL)!,
+                    allowedNavigationHosts: allowedHosts,
+                    preferredHeight: preferredHeight,
+                    minimumHeight: minimumHeight,
+                    maximumHeight: maximumHeight,
+                    userResizable: true,
+                    customCSS: customCSS,
+                    documentLayouts: documentLayouts
                 )
             ])
         ))

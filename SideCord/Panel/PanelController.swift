@@ -19,6 +19,7 @@ final class PanelController: NSObject, ObservableObject {
 
     private let settings: AppSettings
     private let webController: DiscordWebController
+    private let pluginRuntime: PluginWebPanelRuntime
     private let attentionGlowController = AttentionGlowController()
     private let incomingCallCardController = IncomingCallCardController()
     private lazy var edgeMonitor = EdgeMonitor(
@@ -52,10 +53,12 @@ final class PanelController: NSObject, ObservableObject {
     init(
         settings: AppSettings,
         webController: DiscordWebController,
-        railModel: DiscordRailModel
+        railModel: DiscordRailModel,
+        pluginRuntime: PluginWebPanelRuntime
     ) {
         self.settings = settings
         self.webController = webController
+        self.pluginRuntime = pluginRuntime
         panel = SidebarPanel()
         railPanel = DiscordRailPanel(settings: settings, railModel: railModel)
         super.init()
@@ -66,9 +69,8 @@ final class PanelController: NSObject, ObservableObject {
 
     func setContentView(_ contentView: NSView) {
         contentView.wantsLayer = true
-        contentView.layer?.cornerRadius = 16
-        contentView.layer?.cornerCurve = .continuous
-        contentView.layer?.masksToBounds = true
+        contentView.layer?.cornerRadius = 0
+        contentView.layer?.masksToBounds = false
         panel.contentView = contentView
         updatePanelAppearance(maximized: false)
     }
@@ -94,6 +96,7 @@ final class PanelController: NSObject, ObservableObject {
         railPanel.orderOut(nil)
         attentionGlowController.hideImmediately()
         incomingCallCardController.hide()
+        pluginRuntime.shutdown()
         isVisible = false
         panel.contentView = nil
         railPanel.contentView = nil
@@ -273,6 +276,7 @@ final class PanelController: NSObject, ObservableObject {
 
     private func reveal(on screen: NSScreen, activate: Bool) {
         guard canPresentPanel else { return }
+        pluginRuntime.sidebarDidReveal()
         acknowledgeAttentionForReveal()
         cancelAutomaticRetraction()
         let displayID = PanelGeometry.displayID(for: screen)
@@ -312,6 +316,7 @@ final class PanelController: NSObject, ObservableObject {
 
     private func performRetraction(force: Bool) {
         guard isVisible, force || !settings.isPinned else { return }
+        pluginRuntime.sidebarDidRetract()
         if force {
             requiresExplicitDismissal = false
         }
@@ -537,8 +542,8 @@ final class PanelController: NSObject, ObservableObject {
     }
 
     private func updatePanelAppearance(maximized: Bool) {
-        panel.contentView?.layer?.cornerRadius = maximized ? 0 : 16
-        panel.contentView?.layer?.masksToBounds = true
+        panel.contentView?.layer?.cornerRadius = 0
+        panel.contentView?.layer?.masksToBounds = false
         panel.hasShadow = !maximized
         panel.minSize = NSSize(
             width: PanelGeometry.minimumWidth,

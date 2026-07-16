@@ -2271,16 +2271,32 @@ final class WebCSSRuntimeTests: XCTestCase {
         _ = try await webView.evaluateJavaScript(
             "document.querySelector('[data-sidecord-settings-nav=\"plugins\"]').click()"
         )
+        _ = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const toggle = document.querySelector('[data-sidecord-plugin-enabled]');
+              window.__sidecordPluginToggleBeforeSnapshot = toggle;
+              toggle.dispatchEvent(new Event('pointerdown', { bubbles:true }));
+            })()
+            """
+        )
+        _ = try await webView.evaluateJavaScript(
+            DiscordCSSComposer.settingsBridgeUserScriptSource(snapshot: snapshot)
+        )
         let pluginState = try await webView.evaluateJavaScript(
             """
             (() => {
               const toggle = document.querySelector('[data-sidecord-plugin-enabled]');
-              toggle.checked = false;
-              toggle.dispatchEvent(new Event('change', { bubbles:true }));
+              const survivedSnapshot = toggle === window.__sidecordPluginToggleBeforeSnapshot;
+              toggle.dispatchEvent(new Event('pointerup', { bubbles:true }));
+              toggle.click();
+              document.querySelector('[data-sidecord-action="installPlugin"]').click();
+              document.querySelector('[data-sidecord-plugin-remove]').click();
               return {
                 text: document.querySelector('[data-sidecord-plugin-list]').textContent,
                 installButton: !!document.querySelector('[data-sidecord-action="installPlugin"]'),
-                removeButton: !!document.querySelector('[data-sidecord-plugin-remove]')
+                removeButton: !!document.querySelector('[data-sidecord-plugin-remove]'),
+                survivedSnapshot
               };
             })()
             """
@@ -2288,6 +2304,7 @@ final class WebCSSRuntimeTests: XCTestCase {
         XCTAssertTrue((pluginState["text"] as? String)?.contains("Fixture Plugin") == true)
         XCTAssertEqual(pluginState["installButton"] as? Bool, true)
         XCTAssertEqual(pluginState["removeButton"] as? Bool, true)
+        XCTAssertEqual(pluginState["survivedSnapshot"] as? Bool, true)
         XCTAssertTrue(recorder.messages.contains { message in
             message["type"] as? String == "settingsAction"
                 && message["action"] as? String == "resetTheme"
@@ -2295,6 +2312,16 @@ final class WebCSSRuntimeTests: XCTestCase {
         XCTAssertTrue(recorder.messages.contains { message in
             message["type"] as? String == "settingsAction"
                 && message["action"] as? String == "setPluginEnabled"
+                && message["identifier"] as? String == "dev.sidecord.fixture"
+                && message["value"] as? Bool == false
+        })
+        XCTAssertTrue(recorder.messages.contains { message in
+            message["type"] as? String == "settingsAction"
+                && message["action"] as? String == "installPlugin"
+        })
+        XCTAssertTrue(recorder.messages.contains { message in
+            message["type"] as? String == "settingsAction"
+                && message["action"] as? String == "removePlugin"
                 && message["identifier"] as? String == "dev.sidecord.fixture"
         })
 

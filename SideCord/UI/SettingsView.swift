@@ -6,6 +6,7 @@ struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     let webController: DiscordWebController
     @ObservedObject var pluginManager: SideCordPluginManager
+    @ObservedObject var pluginRuntime: PluginWebPanelRuntime
     @ObservedObject var launchAtLoginController: LaunchAtLoginController
     let onShortcutChanged: (ShortcutDefinition) throws -> Void
     let onNavigationShortcutChanged: (ShortcutDefinition) throws -> Void
@@ -24,6 +25,7 @@ struct SettingsView: View {
         settings: AppSettings,
         webController: DiscordWebController,
         pluginManager: SideCordPluginManager,
+        pluginRuntime: PluginWebPanelRuntime,
         launchAtLoginController: LaunchAtLoginController,
         onShortcutChanged: @escaping (ShortcutDefinition) throws -> Void,
         onNavigationShortcutChanged: @escaping (ShortcutDefinition) throws -> Void,
@@ -32,6 +34,7 @@ struct SettingsView: View {
         self.settings = settings
         self.webController = webController
         self.pluginManager = pluginManager
+        self.pluginRuntime = pluginRuntime
         self.launchAtLoginController = launchAtLoginController
         self.onShortcutChanged = onShortcutChanged
         self.onNavigationShortcutChanged = onNavigationShortcutChanged
@@ -853,7 +856,7 @@ struct SettingsView: View {
                     "Enabled",
                     isOn: Binding(
                         get: { pluginManager.isEnabled(plugin) },
-                        set: { pluginManager.setEnabled($0, identifier: plugin.id) }
+                        set: { setPluginEnabled($0, plugin: plugin) }
                     )
                 )
                 .labelsHidden()
@@ -902,6 +905,148 @@ struct SettingsView: View {
             }
             .buttonStyle(.bordered)
         }
+
+        if let panel = contributions.webPanels.first {
+            webPanelControls(plugin: plugin, panel: panel)
+        }
+    }
+
+    private func webPanelControls(
+        plugin: InstalledSideCordPlugin,
+        panel: SideCordPluginWebPanel
+    ) -> some View {
+        let heightBounds = PluginWebPanelLayout.heightBounds(
+            manifestMinimum: panel.minimumHeight,
+            manifestMaximum: panel.maximumHeight
+        )
+        return VStack(alignment: .leading, spacing: 12) {
+            Label("Host-managed web panel", systemImage: "globe.badge.chevron.backward")
+                .font(.subheadline.weight(.semibold))
+            Text(webPanelPermissionSummary(plugin: plugin, panel: panel))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Toggle(
+                "Visible below Discord",
+                isOn: Binding(
+                    get: {
+                        pluginRuntime.isVisible(
+                            pluginIdentifier: plugin.id,
+                            contributionIdentifier: panel.id
+                        )
+                    },
+                    set: {
+                        pluginRuntime.setVisible(
+                            $0,
+                            pluginIdentifier: plugin.id,
+                            contributionIdentifier: panel.id
+                        )
+                    }
+                )
+            )
+
+            if panel.userResizable ?? false {
+                HStack {
+                    Text("Height")
+                    Slider(
+                        value: Binding(
+                            get: {
+                                pluginRuntime.requestedHeight(
+                                    pluginIdentifier: plugin.id,
+                                    panel: panel
+                                )
+                            },
+                            set: {
+                                pluginRuntime.setRequestedHeight(
+                                    $0,
+                                    pluginIdentifier: plugin.id,
+                                    panel: panel
+                                )
+                            }
+                        ),
+                        in: heightBounds
+                    )
+                    .frame(maxWidth: 260)
+                    Text("\(Int(pluginRuntime.requestedHeight(pluginIdentifier: plugin.id, panel: panel))) px")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if plugin.manifest.permissions.backgroundAudio {
+                Toggle(
+                    "Allow audio while SideCord is hidden",
+                    isOn: Binding(
+                        get: {
+                            pluginRuntime.isBackgroundAudioAllowed(
+                                pluginIdentifier: plugin.id,
+                                contributionIdentifier: panel.id
+                            )
+                        },
+                        set: {
+                            pluginRuntime.setBackgroundAudioAllowed(
+                                $0,
+                                pluginIdentifier: plugin.id,
+                                contributionIdentifier: panel.id
+                            )
+                        }
+                    )
+                )
+            }
+
+            HStack {
+                Button("Reload", systemImage: "arrow.clockwise") {
+                    pluginRuntime.reload(
+                        pluginIdentifier: plugin.id,
+                        contributionIdentifier: panel.id
+                    )
+                }
+                Button("Open in Browser", systemImage: "safari") {
+                    pluginRuntime.openInBrowser(
+                        pluginIdentifier: plugin.id,
+                        contributionIdentifier: panel.id
+                    )
+                }
+                Button("Clear Website Data", systemImage: "eraser") {
+                    Task {
+                        await pluginRuntime.clearWebsiteData(
+                            pluginIdentifier: plugin.id,
+                            contributionIdentifier: panel.id
+                        )
+                    }
+                }
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(12)
+        .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func setPluginEnabled(_ enabled: Bool, plugin: InstalledSideCordPlugin) {
+        if enabled, let panel = plugin.manifest.contributions.webPanels.first {
+            let alert = NSAlert()
+            alert.messageText = "Enable \(plugin.manifest.name)?"
+            alert.informativeText = webPanelPermissionSummary(plugin: plugin, panel: panel)
+            alert.addButton(withTitle: "Enable")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            pluginRuntime.approveRequestedPermissions(identifier: plugin.id)
+        }
+        pluginManager.setEnabled(enabled, identifier: plugin.id)
+    }
+
+    private func webPanelPermissionSummary(
+        plugin: InstalledSideCordPlugin,
+        panel: SideCordPluginWebPanel
+    ) -> String {
+        let hosts = panel.allowedNavigationHosts.joined(separator: ", ")
+        let data = plugin.manifest.permissions.persistentWebsiteData
+            ? "stores isolated cookies and local website data"
+            : "uses a temporary isolated browser session"
+        let audio = plugin.manifest.permissions.backgroundAudio
+            ? ", and may continue playing audio while SideCord is hidden"
+            : ""
+        return "Loads content and executable website code from \(hosts), \(data)\(audio). No native bridge is exposed."
     }
 
     private func chooseLocalPlugin() {
@@ -951,7 +1096,39 @@ struct SettingsView: View {
     }
 
     private func uninstallPlugin(_ plugin: InstalledSideCordPlugin) {
-        do { try pluginManager.uninstall(identifier: plugin.id) }
+        let panel = plugin.manifest.contributions.webPanels.first
+        var shouldDeleteWebsiteData = false
+        if panel != nil, plugin.manifest.permissions.persistentWebsiteData {
+            let alert = NSAlert()
+            alert.messageText = "Remove \(plugin.manifest.name)?"
+            alert.informativeText = "Keep its isolated website data to preserve sign-in for a later reinstall, or delete it permanently."
+            alert.addButton(withTitle: "Remove and Keep Data")
+            alert.addButton(withTitle: "Remove and Delete Data")
+            alert.addButton(withTitle: "Cancel")
+            let response = alert.runModal()
+            guard response != .alertThirdButtonReturn else { return }
+            shouldDeleteWebsiteData = response == .alertSecondButtonReturn
+        }
+
+        pluginRuntime.prepareForUninstall(identifier: plugin.id)
+        do {
+            try pluginManager.uninstall(identifier: plugin.id)
+            if shouldDeleteWebsiteData, let panel {
+                Task {
+                    do {
+                        try await pluginRuntime.removeWebsiteData(
+                            pluginIdentifier: plugin.id,
+                            contributionIdentifier: panel.id
+                        )
+                    } catch {
+                        presentedError = PresentedSettingsError(
+                            title: "Plugin removed, data retained",
+                            message: error.localizedDescription
+                        )
+                    }
+                }
+            }
+        }
         catch {
             presentedError = PresentedSettingsError(
                 title: "Couldn’t uninstall plugin",
@@ -1222,7 +1399,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .discordLayout: "Make Discord readable at any sidebar width."
         case .themes: "Choose a visual character that feels at home on your Mac."
         case .advanced: "Shortcuts and carefully contained custom styling."
-        case .plugins: "Install reviewed themes, layouts, styles, and commands."
+        case .plugins: "Install reviewed themes, layouts, styles, commands, and isolated web panels."
         case .about: "Details, privacy, and a fresh start."
         }
     }

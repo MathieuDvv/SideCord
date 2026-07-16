@@ -130,15 +130,18 @@ enum ApplicationMenuFactory {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settings = AppSettings()
     private lazy var pluginManager = SideCordPluginManager()
+    private lazy var pluginRuntime = PluginWebPanelRuntime(pluginManager: pluginManager)
     private lazy var launchAtLoginController = LaunchAtLoginController()
     private lazy var webController = DiscordWebController(
         settings: settings,
-        pluginManager: pluginManager
+        pluginManager: pluginManager,
+        pluginRuntime: pluginRuntime
     )
     private lazy var panelController = PanelController(
         settings: settings,
         webController: webController,
-        railModel: webController.railModel
+        railModel: webController.railModel,
+        pluginRuntime: pluginRuntime
     )
     private lazy var shortcutManager = GlobalShortcutManager(identifier: 1)
     private lazy var navigationShortcutManager = GlobalShortcutManager(identifier: 2)
@@ -211,6 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             settings: settings,
             webController: webController,
             panelController: panelController,
+            pluginRuntime: pluginRuntime,
             onOpenSettings: { [weak self] in
                 self?.showSettings(nil)
             }

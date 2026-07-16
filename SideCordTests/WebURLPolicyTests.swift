@@ -101,4 +101,32 @@ final class WebURLPolicyTests: XCTestCase {
             .download
         )
     }
+
+    func testJavaScriptConfirmationRequiresTopLevelDiscordHTTPSOrigin() {
+        XCTAssertTrue(DiscordJavaScriptDialogPolicy.allowsConfirmation(
+            scheme: "https",
+            host: "discord.com",
+            isMainFrame: true
+        ))
+        XCTAssertTrue(DiscordJavaScriptDialogPolicy.allowsConfirmation(
+            scheme: "HTTPS",
+            host: "canary.discord.com",
+            isMainFrame: true
+        ))
+        XCTAssertFalse(DiscordJavaScriptDialogPolicy.allowsConfirmation(
+            scheme: "http",
+            host: "discord.com",
+            isMainFrame: true
+        ))
+        XCTAssertFalse(DiscordJavaScriptDialogPolicy.allowsConfirmation(
+            scheme: "https",
+            host: "discord.com.example.org",
+            isMainFrame: true
+        ))
+        XCTAssertFalse(DiscordJavaScriptDialogPolicy.allowsConfirmation(
+            scheme: "https",
+            host: "discord.com",
+            isMainFrame: false
+        ))
+    }
 }

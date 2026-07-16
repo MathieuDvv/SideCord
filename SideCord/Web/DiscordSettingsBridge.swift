@@ -1,10 +1,39 @@
 import Foundation
 
+struct SideCordWebPanelSettingsSnapshot: Codable, Equatable, Sendable {
+    let identifier: String
+    let name: String
+    let allowedHosts: [String]
+    let persistentWebsiteData: Bool
+    let backgroundAudioRequested: Bool
+    let backgroundAudioAllowed: Bool
+    let visible: Bool
+    let height: Double
+    let minimumHeight: Double
+    let maximumHeight: Double
+    let userResizable: Bool
+}
+
 struct SideCordPluginSettingsSnapshot: Codable, Equatable, Sendable {
     let identifier: String
     let name: String
     let version: String
     let enabled: Bool
+    let webPanel: SideCordWebPanelSettingsSnapshot?
+
+    init(
+        identifier: String,
+        name: String,
+        version: String,
+        enabled: Bool,
+        webPanel: SideCordWebPanelSettingsSnapshot? = nil
+    ) {
+        self.identifier = identifier
+        self.name = name
+        self.version = version
+        self.enabled = enabled
+        self.webPanel = webPanel
+    }
 }
 
 struct SideCordSettingsSnapshot: Codable, Equatable, Sendable {
@@ -120,7 +149,7 @@ extension DiscordCSSComposer {
           const nextSnapshot = \(encodedSnapshot);
           const handlerName = \(encodedHandler);
           const previous = window[key];
-          if (previous?.version === 8 && typeof previous.update === "function") {
+          if (previous?.version === 9 && typeof previous.update === "function") {
             previous.update(nextSnapshot);
             return;
           }
@@ -131,7 +160,7 @@ extension DiscordCSSComposer {
             catch (_) {}
           };
           const state = {
-            version: 8,
+            version: 9,
             snapshot: nextSnapshot,
             observer: null,
             timer: 0,
@@ -160,6 +189,8 @@ extension DiscordCSSComposer {
             lastWebpackCacheSize: -1,
             activeRangeKey: null,
             rangeCommitTimer: 0,
+            pluginListHost: null,
+            pluginListSignature: "",
             update: null,
             open: null,
             dispose: null
@@ -338,12 +369,21 @@ extension DiscordCSSComposer {
               .sc-footer { display:flex; justify-content:space-between; align-items:center; gap:16px; }
               .sc-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; }
               .sc-plugin-list { display:grid; gap:0; margin-top:18px; }
-              .sc-plugin { display:flex; align-items:center; gap:16px; padding:14px 0;
+              .sc-plugin { display:grid; gap:14px; padding:18px 0;
                 border-top:1px solid rgb(255 255 255 / 14%); }
               html[data-sidecord-resolved-color-scheme="light"] .sc-plugin { border-top-color:rgb(31 35 40 / 18%); }
-              .sc-plugin > span { display:grid; gap:3px; flex:1; min-width:0; }
+              .sc-plugin-head { display:flex; align-items:center; gap:16px; }
+              .sc-plugin-head > span { display:grid; gap:3px; flex:1; min-width:0; }
               .sc-plugin input[type=checkbox] { width:18px; height:18px; accent-color:#7886ff; }
               html[data-sidecord-resolved-color-scheme="light"] .sc-plugin input[type=checkbox] { accent-color:#4752c4; }
+              .sc-plugin-permission { color:#b8bdc7; font-size:13px; line-height:19px; margin:0; }
+              html[data-sidecord-resolved-color-scheme="light"] .sc-plugin-permission { color:#4b5563; }
+              .sc-plugin-controls { display:grid; gap:10px; padding:12px 14px; border-radius:8px;
+                background:rgb(255 255 255 / 6%); }
+              html[data-sidecord-resolved-color-scheme="light"] .sc-plugin-controls { background:rgb(31 35 40 / 7%); }
+              .sc-plugin-control { display:flex; align-items:center; justify-content:space-between; gap:18px; }
+              .sc-plugin-control input[type=range] { width:min(240px,45%); accent-color:#7886ff; }
+              .sc-plugin-actions { display:flex; flex-wrap:wrap; gap:8px; }
               @media(max-width:650px) { [data-sidecord-settings-page]{padding:28px 20px 64px}.sc-row{align-items:flex-start;flex-direction:column}.sc-row select,.sc-row input[type=range]{width:100%} }
             </style>
             <div class="sc-wrap">
@@ -374,7 +414,7 @@ extension DiscordCSSComposer {
                 <div class="sc-actions"><button class="sc-button sc-danger" type="button" data-sidecord-action="resetAll">Reset all SideCord settings</button></div>
               </section>
               <section class="sc-section" data-sidecord-page="plugins"><h2>Plugins</h2><div class="sc-footer">
-                <span><b>${escapeHTML(state.snapshot.pluginsEnabled)} of ${escapeHTML(state.snapshot.pluginsInstalled)} plugins enabled</b><br><small>Installed SideCord extensions remain local and declarative.</small></span>
+                <span><b>${escapeHTML(state.snapshot.pluginsEnabled)} of ${escapeHTML(state.snapshot.pluginsInstalled)} plugins enabled</b><br><small>Plugins remain declarative; web panels use isolated, host-managed browser profiles.</small></span>
                 <button class="sc-button" type="button" data-sidecord-action="installPlugin">Import JSON…</button>
               </div><div class="sc-plugin-list" data-sidecord-plugin-list></div></section>
             </div>`;
@@ -382,8 +422,29 @@ extension DiscordCSSComposer {
           const renderPluginList = () => {
             const host = safeQuery(state.page, "[data-sidecord-plugin-list]");
             if (!host) return;
-            host.replaceChildren();
             const plugins = Array.isArray(state.snapshot.plugins) ? state.snapshot.plugins : [];
+            let signature = "";
+            try {
+              signature = JSON.stringify(plugins.map(plugin => {
+                const panel = plugin.webPanel;
+                return [
+                  String(plugin.identifier || ""), String(plugin.name || ""),
+                  String(plugin.version || ""), !!plugin.enabled,
+                  panel ? [
+                    String(panel.identifier || ""), String(panel.name || ""),
+                    [...(panel.allowedHosts || [])].map(String).sort(),
+                    !!panel.persistentWebsiteData, !!panel.backgroundAudioRequested,
+                    !!panel.backgroundAudioAllowed, !!panel.visible,
+                    Number(panel.height || 0), Number(panel.minimumHeight || 0),
+                    Number(panel.maximumHeight || 0), !!panel.userResizable
+                  ] : null
+                ];
+              }));
+            } catch (_) {}
+            if (state.pluginListHost === host && state.pluginListSignature === signature) return;
+            state.pluginListHost = host;
+            state.pluginListSignature = signature;
+            host.replaceChildren();
             if (!plugins.length) {
               const empty = document.createElement("small");
               empty.textContent = "No plugins installed.";
@@ -393,6 +454,8 @@ extension DiscordCSSComposer {
             for (const plugin of plugins) {
               const rowNode = document.createElement("div");
               rowNode.className = "sc-plugin";
+              const head = document.createElement("div");
+              head.className = "sc-plugin-head";
               const description = document.createElement("span");
               const name = document.createElement("b");
               name.textContent = String(plugin.name || plugin.identifier || "Plugin");
@@ -404,12 +467,147 @@ extension DiscordCSSComposer {
               enabled.checked = !!plugin.enabled;
               enabled.setAttribute("aria-label", `Enable ${name.textContent}`);
               enabled.setAttribute("data-sidecord-plugin-enabled", String(plugin.identifier || ""));
+              enabled.addEventListener("click", event => {
+                event.stopPropagation();
+              });
+              enabled.addEventListener("change", event => {
+                event.stopPropagation();
+                if (enabled.checked && plugin.webPanel) {
+                  const panel = plugin.webPanel;
+                  const domains = Array.isArray(panel.allowedHosts) ? panel.allowedHosts.join(", ") : "declared domains";
+                  const warning = `This plugin loads content and executable website code from ${domains}, ` +
+                    `${panel.persistentWebsiteData ? "stores cookies and local data" : "uses temporary website data"}` +
+                    `${panel.backgroundAudioRequested ? ", and may continue playing audio while SideCord is hidden." : "."}`;
+                  if (!window.confirm(warning)) {
+                    enabled.checked = false;
+                    return;
+                  }
+                }
+                post({ type: "settingsAction", action: "setPluginEnabled",
+                  identifier: String(plugin.identifier || ""), value: !!enabled.checked });
+              });
+              head.append(description, enabled);
+              rowNode.appendChild(head);
+
+              const panel = plugin.webPanel;
+              if (panel) {
+                const permission = document.createElement("p");
+                permission.className = "sc-plugin-permission";
+                const domains = Array.isArray(panel.allowedHosts) ? panel.allowedHosts.join(", ") : "";
+                permission.textContent = `Loads website content and executable website code from ${domains || "declared domains"}. ` +
+                  `${panel.persistentWebsiteData ? "Stores isolated cookies and local data." : "Uses a temporary isolated session."} ` +
+                  `${panel.backgroundAudioRequested ? "May continue audio while SideCord is hidden when allowed." : "Background audio is not requested."}`;
+                rowNode.appendChild(permission);
+
+                const controls = document.createElement("div");
+                controls.className = "sc-plugin-controls";
+                const control = (labelText, input) => {
+                  const label = document.createElement("label");
+                  label.className = "sc-plugin-control";
+                  const text = document.createElement("span");
+                  text.textContent = labelText;
+                  label.append(text, input);
+                  controls.appendChild(label);
+                };
+                const configure = (input, kind) => {
+                  input.setAttribute("data-sidecord-plugin-panel-setting", kind);
+                  input.setAttribute("data-sidecord-plugin-id", String(plugin.identifier || ""));
+                  input.setAttribute("data-sidecord-panel-id", String(panel.identifier || ""));
+                  input.disabled = !plugin.enabled;
+                  const postValue = () => {
+                    const actions = { visible: "setPluginPanelVisible", height: "setPluginPanelHeight",
+                      backgroundAudio: "setPluginPanelBackgroundAudio" };
+                    post({ type: "settingsAction", action: actions[kind],
+                      identifier: String(plugin.identifier || ""),
+                      panelIdentifier: String(panel.identifier || ""),
+                      value: input.type === "checkbox" ? !!input.checked : Number(input.value) });
+                  };
+                  input.addEventListener("click", event => {
+                    if (input.type !== "checkbox") return;
+                    event.stopPropagation();
+                  });
+                  input.addEventListener("change", event => {
+                    event.stopPropagation();
+                    postValue();
+                  });
+                  return input;
+                };
+                const visible = configure(document.createElement("input"), "visible");
+                visible.type = "checkbox";
+                visible.checked = !!panel.visible;
+                control("Visible below Discord", visible);
+
+                const height = configure(document.createElement("input"), "height");
+                height.type = "range";
+                height.min = String(panel.minimumHeight || 120);
+                height.max = String(panel.maximumHeight || 320);
+                height.step = "1";
+                height.value = String(panel.height || 190);
+                height.disabled = !plugin.enabled || !panel.userResizable;
+                control(`Height (${Math.round(Number(panel.height || 190))} px)`, height);
+
+                if (panel.backgroundAudioRequested) {
+                  const audio = configure(document.createElement("input"), "backgroundAudio");
+                  audio.type = "checkbox";
+                  audio.checked = !!panel.backgroundAudioAllowed;
+                  control("Allow audio while hidden", audio);
+                }
+                rowNode.appendChild(controls);
+
+                const panelActions = document.createElement("div");
+                panelActions.className = "sc-plugin-actions";
+                for (const [action, title] of [["reloadPluginPanel", "Reload"], ["openPluginPanel", "Open in browser"], ["clearPluginPanelData", "Clear website data"]]) {
+                  const button = document.createElement("button");
+                  button.type = "button";
+                  button.className = "sc-button sc-secondary";
+                  button.textContent = title;
+                  button.disabled = !plugin.enabled;
+                  button.setAttribute("data-sidecord-plugin-panel-action", action);
+                  button.setAttribute("data-sidecord-plugin-id", String(plugin.identifier || ""));
+                  button.setAttribute("data-sidecord-panel-id", String(panel.identifier || ""));
+                  button.addEventListener("click", event => {
+                    event.stopPropagation();
+                    if (action === "clearPluginPanelData" &&
+                        !window.confirm("Clear this panel’s cookies, sign-in, cache, and local website data?")) return;
+                    post({ type: "settingsAction", action,
+                      identifier: String(plugin.identifier || ""),
+                      panelIdentifier: String(panel.identifier || "") });
+                  });
+                  panelActions.appendChild(button);
+                }
+                rowNode.appendChild(panelActions);
+              }
+
+              const removeActions = document.createElement("div");
+              removeActions.className = "sc-plugin-actions";
               const remove = document.createElement("button");
               remove.type = "button";
               remove.className = "sc-button sc-danger";
               remove.textContent = "Remove";
               remove.setAttribute("data-sidecord-plugin-remove", String(plugin.identifier || ""));
-              rowNode.append(description, enabled, remove);
+              remove.addEventListener("click", event => {
+                event.stopPropagation();
+                post({ type: "settingsAction", action: "removePlugin",
+                  identifier: String(plugin.identifier || "") });
+              });
+              removeActions.appendChild(remove);
+              if (panel?.persistentWebsiteData) {
+                const removeData = document.createElement("button");
+                removeData.type = "button";
+                removeData.className = "sc-button sc-danger";
+                removeData.textContent = "Remove and delete website data";
+                removeData.setAttribute("data-sidecord-plugin-remove-data", String(plugin.identifier || ""));
+                removeData.setAttribute("data-sidecord-panel-id", String(panel.identifier || ""));
+                removeData.addEventListener("click", event => {
+                  event.stopPropagation();
+                  if (!window.confirm("Remove this plugin and permanently delete its isolated website data?")) return;
+                  post({ type: "settingsAction", action: "removePluginAndData",
+                    identifier: String(plugin.identifier || ""),
+                    panelIdentifier: String(panel.identifier || "") });
+                });
+                removeActions.appendChild(removeData);
+              }
+              rowNode.appendChild(removeActions);
               host.appendChild(rowNode);
             }
           };
@@ -459,6 +657,10 @@ extension DiscordCSSComposer {
           const bindPageInteractions = node => {
             if (!node || node.dataset.sidecordSettingsBound) return;
             node.dataset.sidecordSettingsBound = "true";
+            safeQuery(node, '[data-sidecord-action="installPlugin"]')?.addEventListener("click", event => {
+              event.stopPropagation();
+              post({ type: "settingsAction", action: "installPlugin" });
+            });
             node.addEventListener("pointerdown", event => {
               const input = event.target?.closest?.('input[type="range"][data-sidecord-key]');
               if (input) state.activeRangeKey = input.getAttribute("data-sidecord-key");
@@ -482,9 +684,33 @@ extension DiscordCSSComposer {
             node.addEventListener("change", event => {
               const pluginToggle = event.target?.closest?.("[data-sidecord-plugin-enabled]");
               if (pluginToggle) {
+                const plugin = (state.snapshot.plugins || []).find(item =>
+                  String(item.identifier || "") === pluginToggle.getAttribute("data-sidecord-plugin-enabled"));
+                if (pluginToggle.checked && plugin?.webPanel) {
+                  const panel = plugin.webPanel;
+                  const domains = Array.isArray(panel.allowedHosts) ? panel.allowedHosts.join(", ") : "declared domains";
+                  const warning = `This plugin loads content and executable website code from ${domains}, ` +
+                    `${panel.persistentWebsiteData ? "stores cookies and local data" : "uses temporary website data"}` +
+                    `${panel.backgroundAudioRequested ? ", and may continue playing audio while SideCord is hidden." : "."}`;
+                  if (!window.confirm(warning)) {
+                    pluginToggle.checked = false;
+                    return;
+                  }
+                }
                 post({ type: "settingsAction", action: "setPluginEnabled",
                   identifier: pluginToggle.getAttribute("data-sidecord-plugin-enabled"),
                   value: !!pluginToggle.checked });
+                return;
+              }
+              const panelSetting = event.target?.closest?.("[data-sidecord-plugin-panel-setting]");
+              if (panelSetting) {
+                const kind = panelSetting.getAttribute("data-sidecord-plugin-panel-setting");
+                const actions = { visible: "setPluginPanelVisible", height: "setPluginPanelHeight",
+                  backgroundAudio: "setPluginPanelBackgroundAudio" };
+                post({ type: "settingsAction", action: actions[kind],
+                  identifier: panelSetting.getAttribute("data-sidecord-plugin-id"),
+                  panelIdentifier: panelSetting.getAttribute("data-sidecord-panel-id"),
+                  value: panelSetting.type === "checkbox" ? !!panelSetting.checked : Number(panelSetting.value) });
                 return;
               }
               const input = event.target?.closest?.("[data-sidecord-key]");
@@ -493,6 +719,24 @@ extension DiscordCSSComposer {
               else postSetting(input);
             });
             node.addEventListener("click", event => {
+              const panelAction = event.target?.closest?.("[data-sidecord-plugin-panel-action]");
+              if (panelAction) {
+                const action = panelAction.getAttribute("data-sidecord-plugin-panel-action");
+                if (action === "clearPluginPanelData" &&
+                    !window.confirm("Clear this panel’s cookies, sign-in, cache, and local website data?")) return;
+                post({ type: "settingsAction", action,
+                  identifier: panelAction.getAttribute("data-sidecord-plugin-id"),
+                  panelIdentifier: panelAction.getAttribute("data-sidecord-panel-id") });
+                return;
+              }
+              const removeData = event.target?.closest?.("[data-sidecord-plugin-remove-data]");
+              if (removeData) {
+                if (!window.confirm("Remove this plugin and permanently delete its isolated website data?")) return;
+                post({ type: "settingsAction", action: "removePluginAndData",
+                  identifier: removeData.getAttribute("data-sidecord-plugin-remove-data"),
+                  panelIdentifier: removeData.getAttribute("data-sidecord-panel-id") });
+                return;
+              }
               const remove = event.target?.closest?.("[data-sidecord-plugin-remove]");
               if (remove) {
                 post({ type: "settingsAction", action: "removePlugin",
