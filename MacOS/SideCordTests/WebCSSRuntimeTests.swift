@@ -137,14 +137,23 @@ final class WebCSSRuntimeTests: XCTestCase {
               call.className = 'ringingIncoming_fixture';
               call.setAttribute('aria-label', 'Incoming call from Ada');
               call.style.cssText =
-                'position: fixed; top: 20px; left: 20px; width: 260px; height: 90px';
+                'display: flex; align-items: center; gap: 12px; position: fixed; ' +
+                'top: 20px; left: 20px; width: 260px; height: 90px';
               const answer = document.createElement('button');
+              answer.type = 'button';
+              answer.textContent = 'Answer';
               answer.setAttribute('aria-label', 'Answer call');
-              answer.style.cssText = 'width: 44px; height: 28px';
+              answer.style.cssText =
+                'display: block; flex: 0 0 96px; width: 96px; height: 36px; ' +
+                'visibility: visible; opacity: 1';
               answer.addEventListener('click', () => window.fixtureAnswered++);
               const decline = document.createElement('button');
+              decline.type = 'button';
+              decline.textContent = 'Decline';
               decline.setAttribute('aria-label', 'Decline call');
-              decline.style.cssText = 'width: 44px; height: 28px';
+              decline.style.cssText =
+                'display: block; flex: 0 0 96px; width: 96px; height: 36px; ' +
+                'visibility: visible; opacity: 1';
               decline.addEventListener('click', () => window.fixtureDeclined++);
               call.append(answer, decline);
               document.body.appendChild(call);
@@ -177,7 +186,12 @@ final class WebCSSRuntimeTests: XCTestCase {
             """
             (() => {
               const duplicate = document.createElement('button');
+              duplicate.type = 'button';
+              duplicate.textContent = 'Accept';
               duplicate.setAttribute('aria-label', 'Accept incoming call');
+              duplicate.style.cssText =
+                'display: block; flex: 0 0 96px; width: 96px; height: 36px; ' +
+                'visibility: visible; opacity: 1';
               document.getElementById('call-fixture').appendChild(duplicate);
             })()
             """
