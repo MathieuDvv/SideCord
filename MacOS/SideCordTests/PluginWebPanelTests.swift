@@ -530,7 +530,7 @@ final class PluginWebPanelRuntimeTests: XCTestCase {
         XCTAssertEqual(controller?.playbackPauseRequestCount, 1)
         runtime.shutdown()
         controller = nil
-        try await removeDataStore(
+        try? await removeDataStore(
             PluginWebPanelController.stableDataStoreIdentifier(
                 pluginIdentifier: installed.id,
                 contributionIdentifier: panel.id

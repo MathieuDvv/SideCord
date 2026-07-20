@@ -140,9 +140,11 @@ final class WebCSSRuntimeTests: XCTestCase {
                 'position: fixed; top: 20px; left: 20px; width: 260px; height: 90px';
               const answer = document.createElement('button');
               answer.setAttribute('aria-label', 'Answer call');
+              answer.style.cssText = 'width: 44px; height: 28px';
               answer.addEventListener('click', () => window.fixtureAnswered++);
               const decline = document.createElement('button');
               decline.setAttribute('aria-label', 'Decline call');
+              decline.style.cssText = 'width: 44px; height: 28px';
               decline.addEventListener('click', () => window.fixtureDeclined++);
               call.append(answer, decline);
               document.body.appendChild(call);

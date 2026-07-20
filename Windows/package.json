@@ -16,7 +16,7 @@
     "start": "electron .",
     "test": "node --test",
     "pack": "electron-builder --win --dir --x64",
-    "dist": "electron-builder --win nsis --x64"
+    "dist": "electron-builder --win nsis --x64 --publish never"
   },
   "devDependencies": {
     "electron": "39.8.10",
