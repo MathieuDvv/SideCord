@@ -1,7 +1,11 @@
 .DS_Store
-.build/
-DerivedData/
+/.build/
 /dist/
+MacOS/.build/
+MacOS/DerivedData/
+MacOS/dist/
+Windows/node_modules/
+Windows/dist/
 xcuserdata/
 *.xcuserstate
 *.profraw

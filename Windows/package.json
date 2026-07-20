@@ -1,0 +1,62 @@
+{
+  "name": "sidecord-windows",
+  "version": "2.5.0",
+  "description": "Discord, one edge away — for Windows",
+  "main": "src/main/index.js",
+  "author": "MathieuDvv and SideCord contributors",
+  "homepage": "https://github.com/MathieuDvv/SideCord",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MathieuDvv/SideCord.git",
+    "directory": "Windows"
+  },
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "pack": "electron-builder --win --dir --x64",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "39.8.10",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.sidecord.windows",
+    "productName": "SideCord",
+    "asar": true,
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "README.md",
+      "PRIVACY.md",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist"
+    },
+    "win": {
+      "icon": "assets/icon.png",
+      "artifactName": "SideCord-Setup-${version}-${arch}.${ext}",
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SideCord",
+      "uninstallDisplayName": "SideCord"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "allowScripts": {
+    "electron@39.8.10": true,
+    "electron-winstaller@5.4.0": true
+  }
+}

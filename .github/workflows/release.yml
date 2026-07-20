@@ -1,0 +1,97 @@
+name: Build and publish release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  macos-installer:
+    name: macOS universal DMG
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Build and test macOS app
+        working-directory: MacOS
+        run: |
+          xcodebuild -project SideCord.xcodeproj -scheme SideCord -configuration Debug \
+            -destination 'platform=macOS' -derivedDataPath .build/TestDerivedData \
+            CODE_SIGNING_ALLOWED=NO test
+      - name: Build macOS installer
+        env:
+          SIDECORD_VERSION: ${{ inputs.tag || github.ref_name }}
+        run: |
+          chmod +x MacOS/scripts/build-installer.sh
+          SIDECORD_VERSION="${SIDECORD_VERSION#v}" MacOS/scripts/build-installer.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sidecord-macos-dmg
+          path: MacOS/dist/SideCord-macOS-universal-*.dmg
+          if-no-files-found: error
+
+  windows-installer:
+    name: Windows NSIS installer
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Windows/package-lock.json
+      - name: Install dependencies
+        working-directory: Windows
+        run: npm ci
+      - name: Test Windows app
+        working-directory: Windows
+        run: npm test
+      - name: Build Windows installer
+        working-directory: Windows
+        run: npm run dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sidecord-windows-installer
+          path: Windows/dist/SideCord-Setup-*-x64.exe
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: [macos-installer, windows-installer]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Create checksums
+        working-directory: release-assets
+        run: sha256sum SideCord-* > SHA256SUMS.txt
+      - name: Publish release and installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "SideCord ${RELEASE_TAG#v}" \
+              --generate-notes
+          fi

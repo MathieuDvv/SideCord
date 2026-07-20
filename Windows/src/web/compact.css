@@ -1,0 +1,36 @@
+/* SideCord's conservative density preset. Generated class suffixes may change,
+   so selectors match class-token prefixes and fail harmlessly. */
+:root {
+  --custom-guild-list-width: 56px;
+  --custom-channel-sidebar-width: 200px;
+}
+
+:where([class^="guilds_"], [class*=" guilds_"]) {
+  width: 56px !important;
+}
+
+:where([class^="sidebarList_"], [class*=" sidebarList_"]) {
+  width: 200px !important;
+}
+
+:where([class^="membersWrap_"], [class*=" membersWrap_"]) {
+  min-width: 180px !important;
+}
+
+:where([class^="members_"], [class*=" members_"]) {
+  width: 180px !important;
+}
+
+:where([class^="channelTextArea_"], [class*=" channelTextArea_"])
+:where([class^="buttons_"], [class*=" buttons_"]) {
+  gap: 2px !important;
+}
+
+:where([class^="groupStart_"], [class*=" groupStart_"]) {
+  margin-top: 0.65rem !important;
+}
+
+:where([class^="cozyMessage_"], [class*=" cozyMessage_"]) {
+  padding-top: 0.08rem !important;
+  padding-bottom: 0.08rem !important;
+}

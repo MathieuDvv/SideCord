@@ -197,7 +197,68 @@ declared host and still cannot contain plugin-supplied JavaScript.
 - No native bridge is exposed to remote content.
 - Marketplace signing and SHA-256 package verification remain unchanged.
 
-## Marketplace signing
+## Marketplace discovery
+
+Marketplace discovery is repository-based, but SideCord never searches GitHub
+when a user opens the plugin library. A plugin author publishes a public GitHub
+repository with:
+
+- The `sidecord-plugin` repository topic.
+- A `.sidecord/marketplace.json` file on the default branch.
+- The declared plugin package as an asset on the latest stable GitHub Release.
+- A release tag equal to the manifest version, with an optional leading `v`.
+
+Repository naming such as `sidecord-plugin-youtube-music` is helpful but
+optional. The topic, metadata file, and validated package are the discovery
+contract.
+
+```json
+{
+  "schemaVersion": 1,
+  "package": "youtube-music.sidecord-plugin.json",
+  "icon": "assets/icon.png",
+  "categories": ["music", "web-panel"],
+  "summary": "Compact YouTube Music player for SideCord"
+}
+```
+
+`package` must be a JSON filename, `icon` is an optional safe path in the
+repository, categories are lowercase slugs, and the summary is limited to 280
+characters. The scheduled workflow searches the topic, validates every metadata
+file and latest release, rejects duplicates and unsafe packages, and publishes
+one signed catalog through GitHub Pages.
+
+## Publisher identity
+
+The manifest's `author` field remains descriptive. It is not proof of identity.
+The catalog builder derives the publisher and repository from GitHub, so the UI
+can show both `MathieuDvv/sidecord-yt-music-plugin` and `Published by
+@MathieuDvv`. A `verifiedPublisher` marker is assigned only from the
+SideCord-maintained `SIDECORD_VERIFIED_PUBLISHERS` allowlist; plugin metadata
+cannot grant it.
+
+## Installation and updates
+
+Each signed catalog entry includes the plugin identifier and version, GitHub
+release download URL, SHA-256 package hash, GitHub repository and publisher,
+permissions, network hosts, and minimum compatible SideCord version. SideCord:
+
+- Verifies the Ed25519 catalog signature before displaying entries.
+- Verifies the SHA-256 hash and manifest/catalog agreement before confirmation.
+- Shows permissions and network hosts before the first installation.
+- Shows newly added permissions and hosts before an update.
+- Replaces the installed package in place while preserving enablement and the
+  web panel's isolated browser profile.
+- Caches only the last valid signed catalog for offline browsing.
+- Applies the signed emergency blocklist and disables a blocked installed
+  version.
+
+An update must have the same identifier and a strictly newer semantic version.
+The downloaded package version, compatibility requirement, permissions, and
+network hosts must exactly match the signed entry. Plugin-supplied native code,
+JavaScript, executables, and shell commands remain forbidden.
+
+## Catalog signing and deployment
 
 A curated catalog is an envelope with Base64-encoded catalog JSON in `payload`
 and an Ed25519 signature in `signature`. The release build supplies these Info
@@ -210,3 +271,44 @@ Each catalog entry contains the HTTPS package URL and lowercase SHA-256 package
 hash. SideCord verifies the catalog signature before displaying it and verifies
 the package hash before installation. The private signing key must stay in the
 release system and must never be committed to this repository.
+
+The checked-in `plugin-catalog.yml` workflow runs every six hours and on manual
+dispatch. Before enabling it:
+
+1. Generate one Ed25519 key pair in a trusted environment. The workflow secret
+   expects the Base64 form of the raw 32-byte private key; SideCord expects the
+   Base64 form of the matching raw 32-byte public key.
+2. Add the private value as the GitHub Actions secret
+   `SIDECORD_CATALOG_SIGNING_KEY`.
+3. Set the optional repository variable `SIDECORD_VERIFIED_PUBLISHERS` to a
+   comma-separated allowlist of GitHub owners.
+4. Configure GitHub Pages to deploy from GitHub Actions.
+5. Supply the public value as the Xcode build setting
+   `SIDECORD_MARKETPLACE_PUBLIC_KEY` for release builds. The configured catalog
+   URL is `https://mathieudvv.github.io/SideCord/catalog.json`.
+
+The following one-time Python snippet prints both required values. Run it only
+on a trusted machine and store the private value in a secrets manager:
+
+```python
+import base64
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+key = Ed25519PrivateKey.generate()
+private = key.private_bytes(
+    serialization.Encoding.Raw,
+    serialization.PrivateFormat.Raw,
+    serialization.NoEncryption(),
+)
+public = key.public_key().public_bytes(
+    serialization.Encoding.Raw,
+    serialization.PublicFormat.Raw,
+)
+print("private:", base64.b64encode(private).decode())
+print("public: ", base64.b64encode(public).decode())
+```
+
+The committed public-key setting is deliberately empty. With no valid 32-byte
+public key, SideCord treats the marketplace as unavailable instead of trusting
+an unsigned or unverifiable catalog.

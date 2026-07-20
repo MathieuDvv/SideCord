@@ -1,137 +1,171 @@
 <div align="center">
-  <img src="Design/SideCordIcon.svg" width="112" height="112" alt="SideCord app icon">
+  <img src="docs/assets/sidecord-icon.png" width="112" height="112" alt="SideCord app icon">
   <h1>SideCord</h1>
   <p>
     <strong>Discord, one edge away.</strong><br>
-    A native macOS sidebar that keeps your Discord session close without taking over your desktop.
+    A focused, edge-native Discord sidebar for macOS and Windows.
   </p>
   <p>
     <img src="https://img.shields.io/badge/macOS-26%2B-111318?style=flat-square&logo=apple&logoColor=white" alt="macOS 26 or newer">
-    <img src="https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift 6">
+    <img src="https://img.shields.io/badge/Windows-10%2B-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10 or newer">
     <a href="https://github.com/MathieuDvv/SideCord/releases/latest"><img src="https://img.shields.io/github/v/release/MathieuDvv/SideCord?style=flat-square&label=release&color=6757eb" alt="Latest SideCord release"></a>
   </p>
   <p>
-    <a href="https://github.com/MathieuDvv/SideCord/releases/latest"><strong>Download the latest DMG</strong></a>
+    <a href="https://github.com/MathieuDvv/SideCord/releases/latest"><strong>Download SideCord</strong></a>
     &nbsp;·&nbsp;
     <a href="#build-from-source">Build from source</a>
+    &nbsp;·&nbsp;
+    <a href="CONTRIBUTING.md">Contribute</a>
+  </p>
+  <p>
+    <a href="https://ko-fi.com/dotslimy"><img src="https://img.shields.io/badge/Tip%20the%20creator-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Tip the creator on Ko-fi"></a>
   </p>
 </div>
 
 <picture>
   <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/sidecord-demo-still.png">
-  <img src="docs/assets/sidecord-demo.gif" width="960" alt="Animated SideCord product illustration showing the focused edge glow and sidebar reveal">
+  <img src="docs/assets/sidecord-demo.gif" width="960" alt="SideCord edge glow and sidebar reveal on macOS">
 </picture>
 
-SideCord lives in the menu bar and reveals a resizable Discord panel from the left or right edge of any display. It follows you across Spaces, remembers each display's width, and keeps the web session alive when the panel retracts.
+SideCord keeps Discord close without dedicating a permanent window to it. Rest
+the pointer at a configured display edge or use a global shortcut and the
+sidebar appears with the same persistent Discord session. Retract it and the
+session stays alive.
 
-<table>
-  <tr>
-    <td width="33%"><strong>Edge-native</strong><br>Hover at the configured edge or use a global shortcut. SideCord appears on the display you are using.</td>
-    <td width="33%"><strong>Space-aware</strong><br>The nonactivating panel follows every Space, including full-screen apps, without pulling you back to another desktop.</td>
-    <td width="33%"><strong>Made to fit</strong><br>Choose a focused, reader, full, or custom Discord layout with compact density and native-feeling themes.</td>
-  </tr>
-</table>
+## Downloads
 
-## A quieter notification glow
+Each GitHub Release contains real installers for both supported platforms:
 
-New Discord activity produces a soft light on the configured screen edge. It grows from the middle, fades before reaching either corner, and dissolves without interrupting what you are doing.
+| Platform | Installer | Requirements | Implementation |
+|---|---|---|---|
+| macOS | `SideCord-macOS-universal-<version>.dmg` | macOS 26 or newer | Native Swift 6, AppKit, SwiftUI, and WebKit |
+| Windows | `SideCord-Setup-<version>-x64.exe` | Windows 10 1809 or newer | Electron and Chromium with a native Windows shell |
 
-- Normal notifications pulse once, then disappear softly.
-- Rapid notifications restart the pulse instead of being time-coalesced, so later deliveries are not dropped.
-- Incoming calls keep a gentle breathing glow until you open SideCord or the ringing ends.
-- An optional detached call card shows the transient caller or group name with Answer and Decline. If Discord's controls cannot be matched safely, SideCord opens the call UI instead.
-- Revealing SideCord acknowledges the current call, so the glow does not return when the same call is still ringing.
-- The glow follows your selected accent, works on either edge, remains click-through, and respects macOS Reduce Motion.
-- Ordinary attention signals carry only an event boolean. While a call is visibly ringing, the call bridge additionally carries a bounded display name and transient call identifier in memory. The separate floating-rail bridge carries server IDs, names, icons, selection, and unread state; no bridge carries message text, senders, channel names, or notification content.
+The macOS disk image is universal for Apple silicon and Intel: open it and drag
+SideCord into the Applications shortcut. The Windows package is an interactive
+NSIS installer that creates Start Menu and optional desktop shortcuts and
+includes an uninstaller.
 
-You can turn the effect off at any time in **Settings → Sidebar → Glow for Discord activity**.
+> Community release installers are currently unsigned and not notarized.
+> macOS Gatekeeper and Windows SmartScreen may therefore require an explicit
+> confirmation. Warning-free distribution requires Apple Developer ID and
+> Microsoft Authenticode certificates.
 
-## Onboarding and settings
+## Shared experience
 
-First launch now happens in place: the active display dims transparently, the configured edge glows, and the real SideCord panel slides in with Discord's existing sign-in flow. After sign-in—or by choosing to continue without it—a detached setup card guides you through placement, layout, appearance, and launch behavior one focused step at a time. Choosing **Finish** or clicking the backdrop saves those choices and retracts SideCord.
+- Persistent Discord session that survives sidebar retraction
+- Left or right placement, multi-display geometry, pinning, and maximize/restore
+- Edge-hover reveal and configurable global shortcuts
+- Full, Focus, Reader, and Custom Discord layouts
+- Optional detached server rail with selection, unread, and mention state
+- Theme-aware edge glow for Discord activity
+- Discord-integrated SideCord settings instead of a separate settings window
+- Mica, Discord, OLED, and Soft themes with configurable accents
+- Local custom CSS with remote-resource primitives rejected
+- Strict Discord navigation, OAuth popup, permission, and external-link policies
+- No SideCord analytics or telemetry
 
-SideCord's controls live inside Discord's own settings screen under a native-styled **SideCord** category in the left navigation. Selecting it keeps Discord's settings shell in place and changes only the right-hand settings content; SideCord doesn't open a separate settings surface.
+Mica uses the Windows 11 22H2 system backdrop material on Windows and falls back
+to an opaque matching palette where DWM Mica is unavailable. OLED always keeps
+the detached Windows rail opaque pure black.
 
-## Highlights
+## Platform notes
 
-- Persistent `WKWebView` session; retracting SideCord never reloads Discord
-- Edge-hover reveal plus configurable panel and navigation shortcuts
-- Left or right placement, floating inset, pinning, maximize/restore, and per-display widths
-- Full, Focus, Reader, and Custom layouts with an optional floating server rail
-- Settings integrated into Discord's native navigation, plus floating-rail controls in the top pill
-- System Glass, Discord, OLED, and Soft palettes with automatic or forced appearance
-- White and independent glow colors, three glow strengths, and native incoming-call controls
-- Declarative JSON plugins for reviewed themes, layouts, safe styles, allow-listed commands, and isolated host-managed web panels
-- Signed marketplace catalog and package-hash verification when configured by a release build
-- Compact density, essential composer controls, and conservative local custom CSS
-- Native handling for attachments, downloads, camera, microphone, login popups, and QR login
-- Launch at Login and macOS Reduce Motion / Reduce Transparency support
+The two implementations intentionally share the product behavior while using
+the strongest native integration available on each operating system.
 
-## Install
+- **macOS:** native nonactivating panels, Spaces support, WebKit, Reduce Motion
+  and Reduce Transparency integration, incoming-call controls, and declarative
+  plugins with isolated web panels.
+- **Windows:** native Mica, a system tray menu, launch-at-login integration,
+  Windows global accelerators, an isolated Electron preload, and a separate
+  always-on-top server rail window.
 
-1. Download the latest `.dmg` from [Releases](https://github.com/MathieuDvv/SideCord/releases/latest).
-2. Open it and drag **SideCord** into **Applications**.
-3. Launch SideCord from Applications. If Gatekeeper blocks the first launch, Control-click the app, choose **Open**, then confirm.
+See [MacOS/README.md](MacOS/README.md) and
+[Windows/README.md](Windows/README.md) for platform-specific development notes.
 
-> Current community builds are unsigned and not notarized. Developer ID signing and Apple notarization are required for a warning-free public distribution.
+## Repository layout
 
-SideCord requires **macOS 26 or newer**.
-
-## Everyday controls
-
-| Action | Default |
-|---|---|
-| Show or hide SideCord | `⌥ D` |
-| Toggle compact Discord navigation | `⌥ ⇧ D` |
-| Reveal with the pointer | Rest at the configured screen edge |
-| Pin, maximize, change layout, or open Settings | Use the top control pill |
-
-Both shortcuts can be changed in Settings.
-
-<details id="build-from-source">
-<summary><strong>Build from source</strong></summary>
-
-### Requirements
-
-- macOS 26
-- Xcode 26
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen)
-
-Generate the checked-in Xcode project after changing `project.yml`:
-
-```sh
-xcodegen generate
+```text
+SideCord/
+├── MacOS/          Native Swift implementation, Xcode project, and tests
+├── Windows/        Electron implementation, Node tests, and NSIS packaging
+├── docs/           Shared documentation and product artwork
+├── scripts/        Shared plugin-catalog tooling
+├── README.md       Cross-platform product and build guide
+├── CONTRIBUTING.md Development workflow and security boundaries
+├── LICENSE         PolyForm Noncommercial 1.0.0 terms
+└── PRIVACY.md      Cross-platform privacy policy
 ```
 
-Build and test:
+## Build from source
+
+### macOS
+
+Requirements: macOS 26, Xcode 26, and XcodeGen when regenerating the project.
 
 ```sh
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  xcodebuild -project SideCord.xcodeproj -scheme SideCord \
+cd MacOS
+xcodebuild -project SideCord.xcodeproj -scheme SideCord \
   -destination 'platform=macOS' build
-
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  xcodebuild -project SideCord.xcodeproj -scheme SideCord \
+xcodebuild -project SideCord.xcodeproj -scheme SideCord \
   -destination 'platform=macOS' test
 ```
 
-Set a development team in Xcode for a locally signed build. The README animation is reproducible with:
+After changing `MacOS/project.yml`, regenerate and commit the checked-in project:
 
 ```sh
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  xcrun swift Design/generate-readme-animation.swift
+cd MacOS
+xcodegen generate
 ```
 
-</details>
+Build the unsigned universal macOS drag-to-Applications disk image:
 
-## Privacy and permissions
+```sh
+MacOS/scripts/build-installer.sh
+```
 
-SideCord has no analytics and does not inspect Discord credentials or tokens. Its App Sandbox entitlements allow outgoing network access, files you explicitly select, and camera or microphone access only when Discord requests them for a call. See [PRIVACY.md](PRIVACY.md) for the complete policy.
+### Windows
 
-Discord can change its web interface or embedded-browser support at any time, so focused layout selectors and attention signals may occasionally need an update.
+Requirements: Node.js 22 or newer. Development works on macOS, Windows, and
+Linux; the final NSIS installer is built on Windows.
 
-## Plugins
+```powershell
+cd Windows
+npm ci
+npm test
+npm start
+npm run dist
+```
 
-SideCord plugins are declarative JSON packages, not executable extensions. They can contribute validated styles, theme and layout recipes, commands assembled from SideCord's built-in actions, and schema v2 web panels. A web panel may load declared HTTPS sites in a SideCord-owned browser profile isolated from Discord; the package still cannot supply JavaScript or native code and receives no native bridge. See [the plugin format and marketplace security model](docs/PLUGINS.md).
+Pushing a version tag runs both installer builds on GitHub-hosted macOS 26 and
+Windows runners, verifies the platform tests, and publishes the installers and
+`SHA256SUMS.txt` to a GitHub Release.
+
+## Privacy, plugins, and contributions
+
+SideCord does not inspect Discord credentials or tokens and has no analytics.
+Read [PRIVACY.md](PRIVACY.md) for platform-specific storage, permission, rail,
+call, and plugin details.
+
+macOS plugins are declarative JSON packages rather than executable extensions.
+They can contribute validated styles, layouts, commands, and isolated web
+panels. See [docs/PLUGINS.md](docs/PLUGINS.md) for the format and marketplace
+security model.
+
+Bug fixes, selector updates, accessibility improvements, platform parity work,
+and documentation contributions are welcome. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+SideCord is source-available under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial forks and
+modified copies are permitted, but every redistributed copy must include the
+license and required notice. Commercial use, monetization, and monetized
+distribution require separate written permission from the creator.
+
+If SideCord saves you time, you can
+[tip the creator on Ko-fi](https://ko-fi.com/dotslimy).
 
 <p align="center"><sub>SideCord is independent software and is not affiliated with Discord Inc.</sub></p>

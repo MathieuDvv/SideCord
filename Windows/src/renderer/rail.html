@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    :root { color-scheme: dark; --accent:#5865f2; }
+    :root[data-scheme="light"] { color-scheme: light; }
+    * { box-sizing:border-box; }
+    html,body { width:100%;height:100%;margin:0;overflow:hidden;background:transparent; }
+    body { padding:1px; font-family:"Segoe UI Variable","Segoe UI",sans-serif; }
+    #rail { width:100%;height:100%;padding:11px 10px;overflow-y:auto;overflow-x:hidden;
+      border:1px solid rgb(255 255 255 / 12%);border-radius:28px;
+      background:rgb(12 14 19 / 74%);box-shadow:0 14px 44px rgb(0 0 0 / 34%);
+      backdrop-filter:blur(24px) saturate(1.18);scrollbar-width:none; }
+    :root[data-scheme="light"] #rail { background:rgb(250 251 255 / 78%);border-color:rgb(20 24 32 / 13%); }
+    :root[data-theme="systemGlass"] #rail { background:rgb(12 14 19 / 18%);backdrop-filter:none; }
+    :root[data-theme="systemGlass"][data-scheme="light"] #rail { background:rgb(250 251 255 / 18%); }
+    :root[data-theme="discord"] #rail { background:#1e1f22;backdrop-filter:none; }
+    :root[data-theme="discord"][data-scheme="light"] #rail { background:#e3e5e8; }
+    :root[data-theme="oled"],:root[data-theme="oled"] body { color-scheme:dark;background:#000; }
+    :root[data-theme="oled"] #rail { background:#000;border-color:#202024;backdrop-filter:none;box-shadow:0 14px 44px rgb(0 0 0 / 58%); }
+    :root[data-theme="soft"] #rail { background:#292631;backdrop-filter:none; }
+    :root[data-theme="soft"][data-scheme="light"] #rail { background:#fff9fb; }
+    #rail::-webkit-scrollbar { display:none; }
+    .rail-item { position:relative;display:grid;width:52px;height:52px;margin:0 0 9px;padding:0;
+      place-items:center;border:0;border-radius:24px;color:white;background:rgb(255 255 255 / 8%);
+      cursor:pointer;transition:border-radius .16s ease,background .16s ease,transform .12s ease; }
+    .rail-item:hover,.rail-item:focus-visible,.rail-item.selected { border-radius:17px;background:color-mix(in srgb,var(--accent) 30%,transparent);outline:0; }
+    .rail-item:active { transform:scale(.95); }
+    .rail-item img { width:52px;height:52px;border-radius:inherit;object-fit:cover; }
+    .fallback { display:grid;width:100%;height:100%;place-items:center;font-size:19px; }
+    .fluent { font-family:"Segoe Fluent Icons","Segoe MDL2 Assets";color:color-mix(in srgb,var(--accent) 80%,white); }
+    .indicator { position:absolute;z-index:2;left:-8px;width:4px;height:0;border-radius:3px;background:white;transition:height .16s ease; }
+    .indicator.unread { height:9px; }.selected .indicator { height:30px;background:var(--accent); }
+    .mention { position:absolute;z-index:3;right:-5px;top:-5px;display:grid;min-width:18px;height:18px;padding:0 5px;place-items:center;
+      border:2px solid #17191f;border-radius:10px;color:white;background:#da373c;font-size:9px;font-weight:700; }
+    .separator { width:32px;height:1px;margin:2px auto 11px;background:rgb(255 255 255 / 16%); }
+    .loading { width:18px;height:18px;margin:20px auto;border:2px solid rgb(255 255 255 / 20%);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    @media(prefers-reduced-motion:reduce){.rail-item{transition:none}.loading{animation:none}}
+  </style>
+</head>
+<body><main id="rail" aria-label="Discord servers"></main></body>
+</html>

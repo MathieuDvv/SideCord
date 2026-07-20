@@ -1,0 +1,542 @@
+/* SideCord themes are deliberately visual-only. Discord still owns layout,
+   visibility, hit testing, selection, and unread state. */
+
+html[data-sidecord-resolved-color-scheme="dark"] {
+  color-scheme: dark;
+}
+
+html[data-sidecord-resolved-color-scheme="light"] {
+  color-scheme: light;
+}
+
+[data-sidecord-theme-scope="dark"] {
+  color-scheme: dark !important;
+}
+
+[data-sidecord-theme-scope="light"] {
+  color-scheme: light !important;
+}
+
+html[data-sidecord-accent]:not([data-sidecord-accent="automatic"]) {
+  --brand-360: color-mix(in srgb, white 34%, var(--sidecord-accent-color)) !important;
+  --brand-400: color-mix(in srgb, white 20%, var(--sidecord-accent-color)) !important;
+  --brand-500: var(--sidecord-accent-color) !important;
+  --brand-560: color-mix(in srgb, black 10%, var(--sidecord-accent-color)) !important;
+  --brand-600: color-mix(in srgb, black 18%, var(--sidecord-accent-color)) !important;
+  --text-brand: var(--sidecord-accent-color) !important;
+  --button-filled-brand-background: var(--sidecord-accent-color) !important;
+  --button-filled-brand-background-hover: color-mix(
+    in srgb,
+    white 10%,
+    var(--sidecord-accent-color)
+  ) !important;
+  --button-filled-brand-text: #ffffff !important;
+}
+
+/* Accent colors are decorative; filled controls still need readable labels.
+   Bright accents are darkened in light mode instead of placing white text on
+   green, orange, or white. White remains available for surfaces and glow. */
+html[data-sidecord-accent]:not([data-sidecord-accent="automatic"])
+  [data-sidecord-theme-scope="light"],
+html[data-sidecord-accent]:not([data-sidecord-accent="automatic"])[data-sidecord-resolved-color-scheme="light"] {
+  --sidecord-control-accent: color-mix(in srgb, black 38%, var(--sidecord-accent-color));
+  --button-filled-brand-background: var(--sidecord-control-accent) !important;
+  --button-filled-brand-background-hover: color-mix(
+    in srgb,
+    black 12%,
+    var(--sidecord-control-accent)
+  ) !important;
+}
+
+html[data-sidecord-accent]:not([data-sidecord-accent="automatic"])[data-sidecord-resolved-color-scheme="dark"] {
+  --sidecord-control-accent: color-mix(in srgb, white 8%, var(--sidecord-accent-color));
+}
+
+html[data-sidecord-accent="white"][data-sidecord-resolved-color-scheme="light"] {
+  --brand-500: #4752c4 !important;
+  --brand-560: #3f48ad !important;
+  --brand-600: #373f98 !important;
+  --text-brand: #3f48ad !important;
+  --button-filled-brand-background: #4752c4 !important;
+  --button-filled-brand-background-hover: #3f48ad !important;
+  --sidecord-control-accent: #4752c4;
+}
+
+html[data-sidecord-accent="white"][data-sidecord-resolved-color-scheme="dark"] {
+  --brand-500: #dfe1e5 !important;
+  --text-brand: #ffffff !important;
+  --button-filled-brand-background: #dfe1e5 !important;
+  --button-filled-brand-background-hover: #ffffff !important;
+  --button-filled-brand-text: #111214 !important;
+  --sidecord-control-accent: #dfe1e5;
+}
+
+/* Theme targets. The Discord preset remains a true no-op when Color Scheme is
+   System. Explicit Discord Light/Dark is intentionally a complete palette. */
+html[data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"] {
+  --sidecord-target-primary: #313338;
+  --sidecord-target-secondary: #2b2d31;
+  --sidecord-target-tertiary: #1e1f22;
+  --sidecord-target-elevated: #111214;
+  --sidecord-target-input: #383a40;
+  --sidecord-target-border: #3f4147;
+}
+
+html[data-sidecord-theme="discord"][data-sidecord-color-scheme="light"] {
+  --sidecord-target-primary: #ffffff;
+  --sidecord-target-secondary: #f2f3f5;
+  --sidecord-target-tertiary: #e3e5e8;
+  --sidecord-target-elevated: #ffffff;
+  --sidecord-target-input: #ebedef;
+  --sidecord-target-border: #d4d7dc;
+}
+
+html[data-sidecord-theme="system-glass"][data-sidecord-resolved-color-scheme="dark"] {
+  --sidecord-target-primary: rgb(20 23 30 / 76%);
+  --sidecord-target-secondary: rgb(29 33 43 / 70%);
+  --sidecord-target-tertiary: rgb(11 13 18 / 82%);
+  --sidecord-target-elevated: rgb(41 46 58 / 78%);
+  --sidecord-target-input: rgb(36 40 51 / 76%);
+  --sidecord-target-border: #4b5365;
+}
+
+html[data-sidecord-theme="system-glass"][data-sidecord-resolved-color-scheme="light"] {
+  --sidecord-target-primary: rgb(247 248 252 / 74%);
+  --sidecord-target-secondary: rgb(233 237 245 / 70%);
+  --sidecord-target-tertiary: rgb(220 226 237 / 80%);
+  --sidecord-target-elevated: rgb(255 255 255 / 78%);
+  --sidecord-target-input: rgb(255 255 255 / 76%);
+  --sidecord-target-border: #b8c1d0;
+}
+
+html[data-sidecord-theme="oled"][data-sidecord-resolved-color-scheme="dark"] {
+  --sidecord-target-primary: #000000;
+  --sidecord-target-secondary: #050506;
+  --sidecord-target-tertiary: #000000;
+  --sidecord-target-elevated: #0b0b0d;
+  --sidecord-target-input: #101014;
+  --sidecord-target-border: #29292e;
+}
+
+html[data-sidecord-theme="oled"][data-sidecord-resolved-color-scheme="light"] {
+  --sidecord-target-primary: #ffffff;
+  --sidecord-target-secondary: #f7f7f9;
+  --sidecord-target-tertiary: #edeef2;
+  --sidecord-target-elevated: #ffffff;
+  --sidecord-target-input: #fafafc;
+  --sidecord-target-border: #d6d7dc;
+}
+
+html[data-sidecord-theme="soft"][data-sidecord-resolved-color-scheme="dark"] {
+  --sidecord-target-primary: #292631;
+  --sidecord-target-secondary: #342f3e;
+  --sidecord-target-tertiary: #211e29;
+  --sidecord-target-elevated: #403949;
+  --sidecord-target-input: #3a3444;
+  --sidecord-target-border: #665b70;
+}
+
+html[data-sidecord-theme="soft"][data-sidecord-resolved-color-scheme="light"] {
+  --sidecord-target-primary: #fff9fb;
+  --sidecord-target-secondary: #f4ebf0;
+  --sidecord-target-tertiary: #e9dde5;
+  --sidecord-target-elevated: #fffdfd;
+  --sidecord-target-input: #ffffff;
+  --sidecord-target-border: #cfbdc8;
+}
+
+/* Every active combination gets a coherent native baseline. Mixing toward the
+   target makes Theme Intensity useful without returning to Discord's current
+   account theme, which may have the opposite luminance. */
+html:is(
+  [data-sidecord-theme="system-glass"],
+  [data-sidecord-theme="oled"],
+  [data-sidecord-theme="soft"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="light"]
+)[data-sidecord-resolved-color-scheme="dark"] {
+  --sidecord-native-primary: #313338;
+  --sidecord-native-secondary: #2b2d31;
+  --sidecord-native-tertiary: #1e1f22;
+  --sidecord-native-elevated: #111214;
+  --sidecord-native-input: #383a40;
+  --sidecord-native-border: #3f4147;
+  --sidecord-theme-text: #f2f3f5;
+  --sidecord-theme-text-muted: #b8bdc7;
+  --sidecord-theme-header: #ffffff;
+  --sidecord-theme-interactive: #c7c9ce;
+}
+
+html:is(
+  [data-sidecord-theme="system-glass"],
+  [data-sidecord-theme="oled"],
+  [data-sidecord-theme="soft"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="light"]
+)[data-sidecord-resolved-color-scheme="light"] {
+  --sidecord-native-primary: #ffffff;
+  --sidecord-native-secondary: #f2f3f5;
+  --sidecord-native-tertiary: #e3e5e8;
+  --sidecord-native-elevated: #ffffff;
+  --sidecord-native-input: #ebedef;
+  --sidecord-native-border: #d4d7dc;
+  --sidecord-theme-text: #1f2328;
+  --sidecord-theme-text-muted: #4b5563;
+  --sidecord-theme-header: #111214;
+  --sidecord-theme-interactive: #3f454d;
+}
+
+/* Semantic palette. This includes both Discord's established tokens and newer
+   base/surface tokens so app, chat, settings, profiles, and popouts agree. */
+html:is(
+  [data-sidecord-theme="system-glass"],
+  [data-sidecord-theme="oled"],
+  [data-sidecord-theme="soft"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="light"]
+),
+html:is(
+  [data-sidecord-theme="system-glass"],
+  [data-sidecord-theme="oled"],
+  [data-sidecord-theme="soft"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="light"]
+) :where([data-sidecord-theme-scope]) {
+  --sidecord-surface-primary: color-mix(
+    in srgb,
+    var(--sidecord-target-primary) var(--sidecord-theme-strength),
+    var(--sidecord-native-primary)
+  );
+  --sidecord-surface-secondary: color-mix(
+    in srgb,
+    var(--sidecord-target-secondary) var(--sidecord-theme-strength),
+    var(--sidecord-native-secondary)
+  );
+  --sidecord-surface-tertiary: color-mix(
+    in srgb,
+    var(--sidecord-target-tertiary) var(--sidecord-theme-strength),
+    var(--sidecord-native-tertiary)
+  );
+  --sidecord-surface-elevated: color-mix(
+    in srgb,
+    var(--sidecord-target-elevated) var(--sidecord-theme-strength),
+    var(--sidecord-native-elevated)
+  );
+  --sidecord-surface-input: color-mix(
+    in srgb,
+    var(--sidecord-target-input) var(--sidecord-theme-strength),
+    var(--sidecord-native-input)
+  );
+  --sidecord-surface-border: color-mix(
+    in srgb,
+    var(--sidecord-target-border) var(--sidecord-theme-strength),
+    var(--sidecord-native-border)
+  );
+  --sidecord-surface-hover: color-mix(
+    in srgb,
+    var(--sidecord-theme-text) 8%,
+    var(--sidecord-surface-primary)
+  );
+  --sidecord-surface-active: color-mix(
+    in srgb,
+    var(--sidecord-accent-color) 18%,
+    var(--sidecord-surface-primary)
+  );
+
+  --background-primary: var(--sidecord-surface-primary) !important;
+  --background-secondary: var(--sidecord-surface-secondary) !important;
+  --background-secondary-alt: var(--sidecord-surface-tertiary) !important;
+  --background-tertiary: var(--sidecord-surface-tertiary) !important;
+  --background-floating: var(--sidecord-surface-elevated) !important;
+  --background-base-lowest: var(--sidecord-surface-tertiary) !important;
+  --background-base-lower: var(--sidecord-surface-secondary) !important;
+  --background-base-low: var(--sidecord-surface-primary) !important;
+  --background-surface-high: var(--sidecord-surface-secondary) !important;
+  --background-surface-higher: var(--sidecord-surface-elevated) !important;
+  --background-surface-highest: var(--sidecord-surface-elevated) !important;
+  --background-surface-overlay: var(--sidecord-surface-elevated) !important;
+  --background-surface-raised: var(--sidecord-surface-elevated) !important;
+  --bg-base-primary: var(--sidecord-surface-primary) !important;
+  --bg-base-secondary: var(--sidecord-surface-secondary) !important;
+  --bg-base-tertiary: var(--sidecord-surface-tertiary) !important;
+  --bg-surface-overlay: var(--sidecord-surface-elevated) !important;
+  --bg-surface-raised: var(--sidecord-surface-elevated) !important;
+  --bg-surface-elevated: var(--sidecord-surface-elevated) !important;
+  --chat-background: var(--sidecord-surface-primary) !important;
+  --home-background: var(--sidecord-surface-primary) !important;
+  --modal-background: var(--sidecord-surface-elevated) !important;
+  --modal-footer-background: var(--sidecord-surface-secondary) !important;
+  --input-background: var(--sidecord-surface-input) !important;
+  --channeltextarea-background: var(--sidecord-surface-input) !important;
+  --deprecated-card-bg: var(--sidecord-surface-secondary) !important;
+  --background-modifier-hover: var(--sidecord-surface-hover) !important;
+  --background-modifier-active: var(--sidecord-surface-active) !important;
+  --background-modifier-selected: var(--sidecord-surface-active) !important;
+  --background-modifier-accent: var(--sidecord-surface-border) !important;
+  --bg-mod-faint: color-mix(
+    in srgb,
+    var(--sidecord-theme-text) 4%,
+    transparent
+  ) !important;
+  --bg-mod-subtle: var(--sidecord-surface-hover) !important;
+  --bg-mod-strong: var(--sidecord-surface-active) !important;
+  --background-message-hover: var(--sidecord-surface-hover) !important;
+  --background-message-highlight: var(--sidecord-surface-active) !important;
+  --background-mentioned: color-mix(
+    in srgb,
+    var(--sidecord-accent-color) 14%,
+    transparent
+  ) !important;
+  --background-mentioned-hover: color-mix(
+    in srgb,
+    var(--sidecord-accent-color) 20%,
+    transparent
+  ) !important;
+  --text-normal: var(--sidecord-theme-text) !important;
+  --text-default: var(--sidecord-theme-text) !important;
+  --text-primary: var(--sidecord-theme-text) !important;
+  --text-secondary: var(--sidecord-theme-interactive) !important;
+  --text-muted: var(--sidecord-theme-text-muted) !important;
+  --header-primary: var(--sidecord-theme-header) !important;
+  --header-secondary: var(--sidecord-theme-interactive) !important;
+  --interactive-normal: var(--sidecord-theme-interactive) !important;
+  --interactive-hover: var(--sidecord-theme-text) !important;
+  --interactive-active: var(--sidecord-theme-header) !important;
+  --interactive-muted: color-mix(
+    in srgb,
+    var(--sidecord-theme-text-muted) 72%,
+    var(--sidecord-surface-primary)
+  ) !important;
+  --control-brand-foreground: var(
+    --sidecord-control-accent,
+    var(--sidecord-accent-color)
+  ) !important;
+  --switch-background-default: var(--interactive-muted) !important;
+  --switch-background-active: var(
+    --sidecord-control-accent,
+    var(--brand-500)
+  ) !important;
+  --switch-knob-background: var(--sidecord-theme-header) !important;
+  --channels-default: var(--sidecord-theme-text-muted) !important;
+  --channel-icon: var(--sidecord-theme-text-muted) !important;
+  --icon-primary: var(--sidecord-theme-interactive) !important;
+  --icon-secondary: var(--sidecord-theme-text-muted) !important;
+  --border-faint: color-mix(
+    in srgb,
+    var(--sidecord-surface-border) 52%,
+    transparent
+  ) !important;
+  --border-subtle: var(--sidecord-surface-border) !important;
+  --border-strong: color-mix(
+    in srgb,
+    var(--sidecord-theme-text-muted) 58%,
+    var(--sidecord-surface-border)
+  ) !important;
+  --scrollbar-thin-thumb: var(--sidecord-surface-border) !important;
+  --scrollbar-thin-track: transparent !important;
+  --scrollbar-auto-thumb: var(--sidecord-surface-border) !important;
+  --scrollbar-auto-track: var(--sidecord-surface-secondary) !important;
+}
+
+/* Direct surface fallbacks cover Discord components that still ship literal
+   backgrounds or component-local variables. Class tokens are prefix matched
+   because Discord appends build hashes to them. */
+html:is(
+  [data-sidecord-theme="system-glass"],
+  [data-sidecord-theme="oled"],
+  [data-sidecord-theme="soft"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="light"]
+) :where(
+  body,
+  #app-mount,
+  [class^="app_"],
+  [class*=" app_"],
+  [class^="bg_"],
+  [class*=" bg_"],
+  [class^="base_"],
+  [class*=" base_"],
+  [class^="chat_"],
+  [class*=" chat_"],
+  [class^="chatContent_"],
+  [class*=" chatContent_"],
+  [class^="messagesWrapper_"],
+  [class*=" messagesWrapper_"],
+  [class^="contentRegion_"],
+  [class*=" contentRegion_"],
+  [class^="contentRegionScroller_"],
+  [class*=" contentRegionScroller_"]
+) {
+  background-color: var(--sidecord-surface-primary) !important;
+  color: var(--sidecord-theme-text) !important;
+}
+
+html:is(
+  [data-sidecord-theme="system-glass"],
+  [data-sidecord-theme="oled"],
+  [data-sidecord-theme="soft"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="light"]
+) :where(
+  [data-sidecord-role="channel-list"],
+  [data-sidecord-role="account-dock"],
+  [class^="sidebar_"],
+  [class*=" sidebar_"],
+  [class^="sidebarList_"],
+  [class*=" sidebarList_"],
+  [class^="privateChannels_"],
+  [class*=" privateChannels_"],
+  [class^="members_"],
+  [class*=" members_"],
+  [class^="membersWrap_"],
+  [class*=" membersWrap_"],
+  [class^="panels_"],
+  [class*=" panels_"],
+  [class^="sidebarRegion_"],
+  [class*=" sidebarRegion_"]
+) {
+  background-color: var(--sidecord-surface-secondary) !important;
+  border-color: var(--sidecord-surface-border) !important;
+  color: var(--sidecord-theme-text) !important;
+}
+
+html:is(
+  [data-sidecord-theme="system-glass"],
+  [data-sidecord-theme="oled"],
+  [data-sidecord-theme="soft"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="light"]
+) :where(
+  [data-sidecord-role="guild-rail"],
+  [class^="guilds_"],
+  [class*=" guilds_"]
+) {
+  background-color: var(--sidecord-surface-tertiary) !important;
+  border-color: var(--sidecord-surface-border) !important;
+}
+
+html:is(
+  [data-sidecord-theme="system-glass"],
+  [data-sidecord-theme="oled"],
+  [data-sidecord-theme="soft"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="light"]
+) :where(
+  [role="dialog"],
+  [role="menu"],
+  [class^="menu_"],
+  [class*=" menu_"],
+  [class^="popout_"],
+  [class*=" popout_"],
+  [class^="messagesPopoutWrap_"],
+  [class*=" messagesPopoutWrap_"],
+  [class^="userPopoutOuter_"],
+  [class*=" userPopoutOuter_"],
+  [class^="userProfileOuter_"],
+  [class*=" userProfileOuter_"],
+  [class^="modal_"],
+  [class*=" modal_"],
+  [class^="tooltip_"],
+  [class*=" tooltip_"]
+) {
+  background-color: var(--sidecord-surface-elevated) !important;
+  border-color: var(--sidecord-surface-border) !important;
+  color: var(--sidecord-theme-text) !important;
+  box-shadow: 0 18px 52px rgb(0 0 0 / 30%) !important;
+}
+
+html:is(
+  [data-sidecord-theme="system-glass"],
+  [data-sidecord-theme="oled"],
+  [data-sidecord-theme="soft"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="light"]
+) :where(
+  [data-sidecord-role="composer"],
+  [class^="channelTextArea_"],
+  [class*=" channelTextArea_"],
+  [class^="scrollableContainer_"],
+  [class*=" scrollableContainer_"],
+  [class^="input_"],
+  [class*=" input_"]
+) {
+  background-color: var(--sidecord-surface-input) !important;
+  border-color: var(--sidecord-surface-border) !important;
+  color: var(--sidecord-theme-text) !important;
+}
+
+html:is(
+  [data-sidecord-theme="system-glass"],
+  [data-sidecord-theme="oled"],
+  [data-sidecord-theme="soft"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="light"]
+) :where(
+  [id^="chat-messages-"],
+  [class^="message_"],
+  [class*=" message_"]
+):hover {
+  background-color: var(--sidecord-surface-hover) !important;
+}
+
+html:is(
+  [data-sidecord-theme="system-glass"],
+  [data-sidecord-theme="oled"],
+  [data-sidecord-theme="soft"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="light"]
+) :where(
+  [class^="messageContent_"],
+  [class*=" messageContent_"],
+  [class^="markup_"],
+  [class*=" markup_"]
+) {
+  color: var(--sidecord-theme-text) !important;
+}
+
+html:is(
+  [data-sidecord-theme="system-glass"],
+  [data-sidecord-theme="oled"],
+  [data-sidecord-theme="soft"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="dark"],
+  [data-sidecord-theme="discord"][data-sidecord-color-scheme="light"]
+) :where(
+  [class^="divider_"],
+  [class*=" divider_"],
+  [class^="separator_"],
+  [class*=" separator_"],
+  [class^="form_"],
+  [class*=" form_"]
+) {
+  border-color: var(--sidecord-surface-border) !important;
+}
+
+html[data-sidecord-theme="system-glass"] :where(
+  [data-sidecord-role="channel-list"],
+  [data-sidecord-role="account-dock"],
+  [data-sidecord-role="composer"],
+  [role="dialog"],
+  [role="menu"]
+) {
+  backdrop-filter: saturate(150%) blur(28px) !important;
+  box-shadow: 0 16px 44px rgb(0 0 0 / 22%) !important;
+}
+
+html[data-sidecord-theme="soft"] :where(
+  [data-sidecord-role="channel-list"],
+  [data-sidecord-role="account-dock"],
+  [data-sidecord-role="composer"],
+  [role="dialog"],
+  [role="menu"]
+) {
+  box-shadow: 0 14px 38px rgb(var(--sidecord-accent-rgb) / 10%) !important;
+}
+
+html[data-sidecord-theme="oled"][data-sidecord-resolved-color-scheme="dark"] :where(
+  [role="dialog"],
+  [role="menu"],
+  [class^="popout_"],
+  [class*=" popout_"]
+) {
+  box-shadow: 0 0 0 1px var(--sidecord-surface-border) !important;
+}

@@ -1,0 +1,371 @@
+/* Windows host chrome. These nodes are created in Electron's isolated preload
+   world and are never populated with Discord message content. */
+[data-sidecord-host-ui],
+[data-sidecord-host-ui] * {
+  box-sizing: border-box;
+  font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+}
+
+#sidecord-controls {
+  position: fixed;
+  z-index: 2147483647;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid rgb(255 255 255 / 13%);
+  border-radius: 999px;
+  background: rgb(20 22 29 / 76%);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 28%);
+  backdrop-filter: blur(22px) saturate(1.2);
+  -webkit-app-region: no-drag;
+}
+
+html[data-sidecord-theme="system-glass"] #sidecord-controls {
+  background: rgb(20 22 29 / 24%);
+  backdrop-filter: none;
+}
+
+.sidecord-icon-button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: #f4f5f7;
+  background: transparent;
+  font: 400 16px/1 "Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif;
+  cursor: pointer;
+}
+
+.sidecord-icon-button:hover,
+.sidecord-icon-button:focus-visible {
+  outline: none;
+  background: rgb(var(--sidecord-accent-rgb, 88 101 242) / 28%);
+}
+
+.sidecord-overlay {
+  position: fixed;
+  z-index: 2147483646;
+  inset: 0;
+  display: grid;
+  overflow: auto;
+  padding: 28px 18px;
+  place-items: center;
+  color: #eef0f5;
+  background: rgb(7 9 14 / 74%);
+  backdrop-filter: blur(18px);
+}
+
+.sidecord-overlay[hidden] {
+  display: none !important;
+}
+
+.sidecord-settings-card,
+.sidecord-onboarding-card {
+  width: min(680px, 100%);
+  max-height: calc(100vh - 56px);
+  overflow: auto;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 22px;
+  color: #eef0f5;
+  background: #171a22;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 50%);
+}
+
+[data-sidecord-settings-page] {
+  position:absolute;
+  z-index:100;
+  inset:0;
+  overflow:auto;
+  padding:48px 40px 96px;
+  color:#eef0f5;
+  background:var(--background-base-lowest,var(--background-primary,#111214));
+}
+
+html[data-sidecord-resolved-color-scheme="light"] [data-sidecord-settings-page] {
+  color:#1f2328;
+}
+
+.sidecord-integrated-card {
+  width:min(740px,100%);
+  max-height:none;
+  overflow:visible;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  font-family:var(--font-primary,"gg sans","Noto Sans",sans-serif);
+}
+
+.sidecord-integrated-card .sidecord-settings-header {
+  position:static;
+  padding:0 0 26px;
+  background:transparent;
+  backdrop-filter:none;
+}
+
+.sidecord-integrated-card section {
+  padding:18px 0 8px;
+}
+
+.sidecord-integrated-card section[data-sidecord-page] {
+  display:none;
+}
+
+[data-sidecord-settings-page][data-sidecord-selected-page="theme"] section[data-sidecord-page="theme"],
+[data-sidecord-settings-page][data-sidecord-selected-page="layout"] section[data-sidecord-page="layout"],
+[data-sidecord-settings-page][data-sidecord-selected-page="settings"] section[data-sidecord-page="settings"] {
+  display:block;
+}
+
+.sidecord-integrated-card .sidecord-settings-footer {
+  padding:18px 0;
+  background:var(--background-base-lowest,var(--background-primary,#111214));
+}
+
+.sidecord-settings-header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 26px 18px;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  background: rgb(23 26 34 / 92%);
+  backdrop-filter: blur(18px);
+}
+
+.sidecord-settings-header h1,
+.sidecord-settings-header p,
+.sidecord-onboarding-card h1,
+.sidecord-onboarding-card p {
+  margin: 0;
+}
+
+.sidecord-settings-header p,
+.sidecord-onboarding-card p,
+.sidecord-help {
+  margin-top: 5px;
+  color: #aeb3c2;
+}
+
+.sidecord-settings-card section {
+  padding: 19px 26px 8px;
+}
+
+.sidecord-settings-card h2 {
+  margin: 0 0 12px;
+  color: color-mix(in srgb, var(--sidecord-accent-color, #5865f2) 74%, white);
+  font-size: 14px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.sidecord-field {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 0;
+  border-top: 1px solid var(--background-modifier-accent,rgb(255 255 255 / 10%));
+  font-size: 16px;
+  cursor: default;
+}
+
+.sidecord-field:first-of-type {
+  border-top: 0;
+}
+
+.sidecord-field-copy {
+  display:grid;
+  gap:4px;
+}
+
+.sidecord-field-copy b {
+  color:var(--header-primary,currentColor);
+  font-size:16px;
+  font-weight:500;
+}
+
+.sidecord-field-copy small {
+  color:var(--text-muted,#b8bdc7);
+  font-size:14px;
+  line-height:18px;
+}
+
+.sidecord-field select,
+.sidecord-field input:not([type="checkbox"]),
+.sidecord-settings-card textarea {
+  min-width: 210px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-normal,#f2f3f5);
+  background: var(--input-background,var(--background-secondary,#2b2d31));
+  font:inherit;
+}
+
+.sidecord-field input[type="checkbox"] {
+  position:relative;
+  width:40px;
+  height:24px;
+  flex:0 0 auto;
+  appearance:none;
+  border:1px solid var(--interactive-muted,#8b919a);
+  border-radius:12px;
+  background:var(--interactive-muted,#686d73);
+  cursor:pointer;
+  transition:background .15s ease;
+}
+
+.sidecord-field input[type="checkbox"]::after {
+  content:"";
+  position:absolute;
+  top:2px;
+  left:2px;
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  background:white;
+  transition:transform .15s ease;
+}
+
+.sidecord-field input[type="checkbox"]:checked {
+  border-color:var(--brand-500,var(--sidecord-accent-color,#5865f2));
+  background:var(--brand-500,var(--sidecord-accent-color,#5865f2));
+}
+
+.sidecord-field input[type="checkbox"]:checked::after {
+  transform:translateX(16px);
+}
+
+.sidecord-field :is(input,select):focus-visible,
+.sidecord-settings-card textarea:focus-visible {
+  outline:2px solid var(--brand-500,var(--sidecord-accent-color,#5865f2));
+  outline-offset:2px;
+}
+
+.sidecord-settings-card textarea {
+  width: 100%;
+  min-height: 130px;
+  resize: vertical;
+  font: 12px/1.5 Consolas, monospace;
+}
+
+.sidecord-settings-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 26px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  background: rgb(23 26 34 / 94%);
+  backdrop-filter: blur(18px);
+}
+
+#sidecord-settings-status {
+  margin-right: auto;
+  color: #9ea4b3;
+  font-size: 13px;
+}
+
+.sidecord-primary,
+.sidecord-secondary {
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 9px;
+  color: white;
+  background: var(--sidecord-accent-color, #5865f2);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.sidecord-secondary {
+  color: #e5e7ec;
+  background: #303542;
+}
+
+@media (max-width: 650px) {
+  [data-sidecord-settings-page] {
+    padding: 28px 20px 64px;
+  }
+
+  .sidecord-field {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .sidecord-field select,
+  .sidecord-field input:not([type="checkbox"]),
+  .sidecord-settings-card textarea {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .sidecord-field input[type="checkbox"] {
+    align-self: flex-end;
+    margin-top: -38px;
+  }
+
+  .sidecord-settings-footer {
+    flex-wrap: wrap;
+  }
+}
+
+.sidecord-onboarding-card {
+  width: min(430px, 100%);
+  padding: 34px;
+  text-align: center;
+}
+
+.sidecord-mark {
+  display: grid;
+  width: 62px;
+  height: 62px;
+  margin: 0 auto 22px;
+  place-items: center;
+  border-radius: 17px;
+  color: white;
+  background: linear-gradient(145deg, #5b7cfa, #8b4fe2);
+  box-shadow: 0 12px 30px rgb(88 101 242 / 35%);
+  font-size: 31px;
+  font-weight: 750;
+}
+
+.sidecord-step {
+  margin-bottom: 8px;
+  color: #9198aa;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.sidecord-onboarding-card p {
+  margin-top: 12px;
+  line-height: 1.55;
+}
+
+.sidecord-onboarding-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+@media (max-width: 520px) {
+  .sidecord-overlay { padding: 12px; }
+  .sidecord-settings-card { max-height: calc(100vh - 24px); }
+  .sidecord-field { align-items: flex-start; flex-direction: column; gap: 7px; padding: 10px 0; }
+  .sidecord-field select, .sidecord-field input:not([type="checkbox"]) { width: 100%; }
+}
