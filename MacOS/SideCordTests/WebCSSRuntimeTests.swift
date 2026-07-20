@@ -169,13 +169,44 @@ final class WebCSSRuntimeTests: XCTestCase {
         )
         try await waitForRuntime()
 
+        let fixtureState = try await webView.evaluateJavaScript(
+            """
+            (() => {
+              const call = document.getElementById('call-fixture');
+              const describe = element => {
+                const bounds = element.getBoundingClientRect();
+                const style = getComputedStyle(element);
+                return {
+                  label: element.getAttribute('aria-label'),
+                  role: element.getAttribute('role'),
+                  display: style.display,
+                  visibility: style.visibility,
+                  opacity: style.opacity,
+                  connected: element.isConnected,
+                  bounds: {
+                    top: bounds.top,
+                    left: bounds.left,
+                    width: bounds.width,
+                    height: bounds.height
+                  }
+                };
+              };
+              return JSON.stringify({
+                viewport: { width: innerWidth, height: innerHeight },
+                call: describe(call),
+                candidates: [...call.querySelectorAll("button, [role='button']")]
+                  .map(describe)
+              });
+            })()
+            """
+        ) as? String
         let answerResult = try await webView.evaluateJavaScript(
             DiscordCSSComposer.incomingCallActionSource("answer")
         ) as? Bool
         let declineResult = try await webView.evaluateJavaScript(
             DiscordCSSComposer.incomingCallActionSource("decline")
         ) as? Bool
-        XCTAssertEqual(answerResult, true)
+        XCTAssertEqual(answerResult, true, fixtureState ?? "Missing fixture diagnostics")
         XCTAssertEqual(declineResult, true)
 
         let counts = try await webView.evaluateJavaScript(
