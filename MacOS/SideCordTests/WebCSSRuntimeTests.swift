@@ -139,16 +139,18 @@ final class WebCSSRuntimeTests: XCTestCase {
               call.style.cssText =
                 'display: flex; align-items: center; gap: 12px; position: fixed; ' +
                 'top: 20px; left: 20px; width: 260px; height: 90px';
-              const answer = document.createElement('button');
-              answer.type = 'button';
+              const answer = document.createElement('div');
+              answer.setAttribute('role', 'button');
+              answer.tabIndex = 0;
               answer.textContent = 'Answer';
               answer.setAttribute('aria-label', 'Answer call');
               answer.style.cssText =
                 'display: block; flex: 0 0 96px; width: 96px; height: 36px; ' +
                 'visibility: visible; opacity: 1';
               answer.addEventListener('click', () => window.fixtureAnswered++);
-              const decline = document.createElement('button');
-              decline.type = 'button';
+              const decline = document.createElement('div');
+              decline.setAttribute('role', 'button');
+              decline.tabIndex = 0;
               decline.textContent = 'Decline';
               decline.setAttribute('aria-label', 'Decline call');
               decline.style.cssText =
@@ -185,8 +187,9 @@ final class WebCSSRuntimeTests: XCTestCase {
         _ = try await webView.evaluateJavaScript(
             """
             (() => {
-              const duplicate = document.createElement('button');
-              duplicate.type = 'button';
+              const duplicate = document.createElement('div');
+              duplicate.setAttribute('role', 'button');
+              duplicate.tabIndex = 0;
               duplicate.textContent = 'Accept';
               duplicate.setAttribute('aria-label', 'Accept incoming call');
               duplicate.style.cssText =
