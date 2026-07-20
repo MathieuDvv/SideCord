@@ -11,11 +11,11 @@
     <a href="https://github.com/MathieuDvv/SideCord/releases/latest"><img src="https://img.shields.io/github/v/release/MathieuDvv/SideCord?style=flat-square&label=release&color=6757eb" alt="Latest SideCord release"></a>
   </p>
   <p>
-    <a href="https://github.com/MathieuDvv/SideCord/releases/latest"><strong>Download SideCord</strong></a>
+    <a href="#install-sidecord"><strong>Install SideCord</strong></a>
+    &nbsp;·&nbsp;
+    <a href="#what-you-get">Features</a>
     &nbsp;·&nbsp;
     <a href="#build-from-source">Build from source</a>
-    &nbsp;·&nbsp;
-    <a href="CONTRIBUTING.md">Contribute</a>
   </p>
   <p>
     <a href="https://ko-fi.com/dotslimy"><img src="https://img.shields.io/badge/Tip%20the%20creator-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Tip the creator on Ko-fi"></a>
@@ -27,31 +27,72 @@
   <img src="docs/assets/sidecord-demo.gif" width="960" alt="SideCord edge glow and sidebar reveal on macOS">
 </picture>
 
-SideCord keeps Discord close without dedicating a permanent window to it. Rest
-the pointer at a configured display edge or use a global shortcut and the
-sidebar appears with the same persistent Discord session. Retract it and the
-session stays alive.
+SideCord keeps Discord close without dedicating a permanent window to it. Move
+the pointer to your chosen display edge or press a global shortcut: your same
+Discord session slides into view, then stays alive when the sidebar retracts.
 
-## Downloads
+## Install SideCord
 
-Each GitHub Release contains real installers for both supported platforms:
+Choose the installer for your computer from the
+[latest GitHub Release](https://github.com/MathieuDvv/SideCord/releases/latest):
 
-| Platform | Installer | Requirements | Implementation |
-|---|---|---|---|
-| macOS | `SideCord-macOS-universal-<version>.dmg` | macOS 26 or newer | Native Swift 6, AppKit, SwiftUI, and WebKit |
-| Windows | `SideCord-Setup-<version>-x64.exe` | Windows 10 1809 or newer | Electron and Chromium with a native Windows shell |
+| | macOS | Windows |
+|---|---|---|
+| **Download** | `SideCord-macOS-universal-<version>.dmg` | `SideCord-Setup-<version>-x64.exe` |
+| **Requires** | macOS 26 or newer | Windows 10 version 1809 or newer (x64) |
+| **Built with** | Native Swift, AppKit, SwiftUI, and WebKit | Electron, Chromium, and a native Windows shell |
 
-The macOS disk image is universal for Apple silicon and Intel: open it and drag
-SideCord into the Applications shortcut. The Windows package is an interactive
-NSIS installer that creates Start Menu and optional desktop shortcuts and
-includes an uninstaller.
+### 🍎 macOS
 
-> Community release installers are currently unsigned and not notarized.
-> macOS Gatekeeper and Windows SmartScreen may therefore require an explicit
-> confirmation. Warning-free distribution requires Apple Developer ID and
-> Microsoft Authenticode certificates.
+1. Open the [latest release](https://github.com/MathieuDvv/SideCord/releases/latest)
+   and download the file ending in `.dmg`.
+2. Open the downloaded disk image, then drag **SideCord** onto the
+   **Applications** shortcut.
+3. Open **SideCord** from Applications.
+4. Follow the welcome screen, sign in to Discord, and choose your edge.
 
-## Shared experience
+The macOS installer is universal: the same download works on Apple silicon and
+Intel Macs. If macOS blocks the first launch, try opening SideCord once, then
+follow [Apple's current instructions](https://support.apple.com/guide/mac-help/open-an-app-by-overriding-security-settings-mh40617/mac): open **System
+Settings → Privacy & Security**, find the SideCord message under Security,
+choose **Open Anyway**, and confirm **Open**.
+
+### 🪟 Windows
+
+1. Open the [latest release](https://github.com/MathieuDvv/SideCord/releases/latest)
+   and download the file ending in `-x64.exe`.
+2. Double-click the downloaded setup file.
+3. If Microsoft Defender SmartScreen appears, choose **More info**, verify that
+   you downloaded the file from this repository's Releases page, then choose
+   **Run anyway**.
+4. Complete the installer and open **SideCord** from the Start Menu or the
+   optional desktop shortcut.
+
+Windows may not offer **Run anyway** on a managed computer or when Smart App
+Control is enforcing signed apps. In that case, do not disable your computer's
+security controls; SideCord will need a code-signed release.
+
+> [!IMPORTANT]
+> Current community installers are not code-signed, and the macOS build is not
+> notarized. Gatekeeper or SmartScreen may therefore ask for the confirmation
+> described above. Only download SideCord from this repository's GitHub
+> Releases page.
+
+<details>
+<summary><strong>Verify your download (optional)</strong></summary>
+
+Every release includes `SHA256SUMS.txt`. This is not an installer; it contains
+checksums that let you confirm your download has not changed.
+
+On macOS, run `shasum -a 256 SideCord-macOS-universal-<version>.dmg`. On
+Windows, run
+`Get-FileHash .\SideCord-Setup-<version>-x64.exe -Algorithm SHA256` in
+PowerShell. The result should match the corresponding line in
+`SHA256SUMS.txt`.
+
+</details>
+
+## What you get
 
 - Persistent Discord session that survives sidebar retraction
 - Left or right placement, multi-display geometry, pinning, and maximize/restore
